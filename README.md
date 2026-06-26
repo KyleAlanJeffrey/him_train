@@ -2,9 +2,25 @@
 
 ## Overview
 
-This repository provides a set of reinforcement learning tasks for Booster robots using [Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html).
-Currently it includes the fabulous [BeyondMimic motion tracking](https://github.com/HybridRobotics/whole_body_tracking) framework adapted to Booster K1 robots.
+This repository provides a set of reinforcement learning tasks for Booster robots (K1, 22 DOF; T1, 23 DOF) using [Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html).
+It includes:
+
+- **BeyondMimic motion tracking** (K1) — the [BeyondMimic motion tracking](https://github.com/HybridRobotics/whole_body_tracking) framework adapted to Booster K1, tracking reference motions loaded from NPZ.
+- **T1 crawl** — quadruped-style crawl locomotion for the Booster T1 (body face-down, all four limbs on the ground).
+
+Policies are trained with [rsl_rl](https://github.com/leggedrobotics/rsl_rl) PPO and exported to TorchScript/ONNX for deployment.
 This repository follows the standard Isaac Lab project structure, and is tested with IsaacLab 2.2 and Isaac Sim 5.0.
+
+### Available tasks
+
+| Task ID | Robot | Description |
+|---|---|---|
+| `T1-crawl-v0` | T1 | Crawl locomotion (velocity-tracking on all fours) |
+| `Booster-K1-Fight_001-v0` (+ `-Play`) | K1 | Fight motion tracking |
+| `Booster-K1-MJ_Dance_002-v0` (+ `-Play`) | K1 | Dance motion tracking |
+| `Booster-K1-MJ_Dance_004-v0` | K1 | Dance motion tracking |
+
+Run `python scripts/list_envs.py` to list the registered tasks.
 
 ## Installation
 

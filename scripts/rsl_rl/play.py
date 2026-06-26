@@ -70,9 +70,9 @@ from isaaclab.envs import (
 )
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
+# from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
+from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
@@ -102,7 +102,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     if args_cli.use_pretrained_checkpoint:
-        resume_path = get_published_pretrained_checkpoint("rsl_rl", train_task_name)
+        # resume_path = get_published_pretrained_checkpoint("rsl_rl", train_task_name)
         if not resume_path:
             print("[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task.")
             return
@@ -143,33 +143,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
-    # extract the neural network module
-    # we do this in a try-except to maintain backwards compatibility.
-    try:
-        # version 2.3 onwards
-        policy_nn = ppo_runner.alg.policy
-    except AttributeError:
-        # version 2.2 and below
-        policy_nn = ppo_runner.alg.actor_critic
-
-    # extract the normalizer
-    if hasattr(policy_nn, "actor_obs_normalizer"):
-        normalizer = policy_nn.actor_obs_normalizer
-    elif hasattr(policy_nn, "student_obs_normalizer"):
-        normalizer = policy_nn.student_obs_normalizer
-    elif hasattr(ppo_runner, "obs_normalizer"):     # compatibility for older versions
-        normalizer = ppo_runner.obs_normalizer
-    else:
-        normalizer = None
-
     # export policy to onnx/jit
+    # rsl-rl 5.x: the policy is a single MLPModel that embeds its own obs normalizer,
+    # so use the runner's built-in exporters (they call get_policy().as_jit()/as_onnx()).
+    # The older isaaclab export_policy_as_jit/onnx + manual alg.policy/actor_critic +
+    # normalizer extraction no longer applies (PPO has no .policy/.actor_critic attribute).
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     run_name = os.path.basename(log_dir)
-    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir,
-                         filename=f"{agent_cfg.experiment_name}_{run_name}.pt")
-    export_policy_as_onnx(
-        policy_nn, normalizer=normalizer, path=export_model_dir,
-        filename=f"{agent_cfg.experiment_name}_{run_name}.onnx"
+    ppo_runner.export_policy_to_jit(
+        export_model_dir, filename=f"{agent_cfg.experiment_name}_{run_name}.pt"
+    )
+    ppo_runner.export_policy_to_onnx(
+        export_model_dir, filename=f"{agent_cfg.experiment_name}_{run_name}.onnx"
     )
 
     if args_cli.headless and not args_cli.video:

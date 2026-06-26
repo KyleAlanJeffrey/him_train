@@ -29,7 +29,6 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from booster_train.assets.robots.booster import BOOSTER_T1_CFG
 from . import mdp
 
-
 # T1 crawl initial state: body horizontal, all 4 limbs on ground.
 # Rotation (w,x,y,z) = 90° about world Y → body +X points world -Z (face-down),
 # body +Z points world +X (forward). This gives projected_gravity_b ≈ [1, 0, 0].
@@ -40,26 +39,29 @@ T1_CRAWL_CFG = BOOSTER_T1_CFG.replace(
         pos=(0.0, 0.0, 0.28),
         rot=(0.7071, 0.0, 0.7071, 0.0),
         joint_pos={
-            "AAHead_yaw": 0.0,
-            "Head_pitch": 0.0,
-            # Arms reaching forward-down for ground contact
-            ".*_Shoulder_Pitch": -1.0,
-            "Left_Shoulder_Roll": -0.3,
-            "Right_Shoulder_Roll": 0.3,
-            ".*_Elbow_Pitch": -1.5,
-            "Left_Elbow_Yaw": -0.3,
-            "Right_Elbow_Yaw": 0.3,
-            # Waist neutral
-            "Waist": 0.0,
-            # Legs bent for quadruped stance (all within T1 limits)
-            ".*_Hip_Pitch": -1.2,
-            "Left_Hip_Roll": 0.8,
-            "Right_Hip_Roll": -0.8,
-            "Left_Hip_Yaw": 0.4,
-            "Right_Hip_Yaw": -0.4,
-            ".*_Knee_Pitch": 1.8,
-            ".*_Ankle_Pitch": 0.2,
-            ".*_Ankle_Roll": 0.0,
+            "AAHead_yaw": 0.000,
+            "Left_Shoulder_Pitch": -1.000,
+            "Right_Shoulder_Pitch": -1.000,
+            "Waist": 0.000,
+            "Head_pitch": -0.300,
+            "Left_Shoulder_Roll": -0.300,
+            "Right_Shoulder_Roll": 0.300,
+            "Left_Hip_Pitch": -1.150,
+            "Right_Hip_Pitch": -1.150,
+            "Left_Elbow_Pitch": 0.600,
+            "Right_Elbow_Pitch": 0.600,
+            "Left_Hip_Roll": 1.400,
+            "Right_Hip_Roll": -1.400,
+            "Left_Elbow_Yaw": -1.300,
+            "Right_Elbow_Yaw": 1.300,
+            "Left_Hip_Yaw": 0.950,
+            "Right_Hip_Yaw": -0.900,
+            "Left_Knee_Pitch": 1.700,
+            "Right_Knee_Pitch": 1.700,
+            "Left_Ankle_Pitch": -0.700,
+            "Right_Ankle_Pitch": -0.700,
+            "Left_Ankle_Roll": -0.000,
+            "Right_Ankle_Roll": 0.000,
         },
         joint_vel={".*": 0.0},
     )
@@ -109,8 +111,8 @@ class CommandsCfg:
         rel_standing_envs=0.05,
         debug_vis=True,
         ranges=mdp.CrawlVelocityCommandCfg.Ranges(
-            lin_vel_z=(-1.0, 2.5),   # forward (body Z = world +X when crawling)
-            lin_vel_y=(0.0, 0.0),    # lateral (body Y)
+            lin_vel_z=(-1.0, 2.5),  # forward (body Z = world +X when crawling)
+            lin_vel_y=(0.0, 0.0),  # lateral (body Y)
             ang_vel_x=(-1.0, 1.0),  # roll about body X (= world yaw when crawling)
         ),
     )
@@ -349,11 +351,21 @@ class RewardsCfg:
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
-                body_names=["left_foot_link", "right_foot_link", "left_hand_link", "right_hand_link"],
+                body_names=[
+                    "left_foot_link",
+                    "right_foot_link",
+                    "left_hand_link",
+                    "right_hand_link",
+                ],
             ),
             "asset_cfg": SceneEntityCfg(
                 "robot",
-                body_names=["left_foot_link", "right_foot_link", "left_hand_link", "right_hand_link"],
+                body_names=[
+                    "left_foot_link",
+                    "right_foot_link",
+                    "left_hand_link",
+                    "right_hand_link",
+                ],
             ),
         },
     )
