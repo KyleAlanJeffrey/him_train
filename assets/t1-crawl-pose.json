@@ -1,0 +1,33 @@
+{
+  "poses": [
+    {
+      "base_pos": [0.0, 0.0, 0.28],
+      "base_rpy": [0.0, 1.5707963, 0.0],
+      "joints": {
+        "AAHead_yaw": 0.0,
+        "Head_pitch": 0.0,
+        "Left_Shoulder_Pitch": -1.0,
+        "Right_Shoulder_Pitch": -1.0,
+        "Left_Shoulder_Roll": -0.3,
+        "Right_Shoulder_Roll": 0.3,
+        "Left_Elbow_Pitch": -1.5,
+        "Right_Elbow_Pitch": -1.5,
+        "Left_Elbow_Yaw": -0.3,
+        "Right_Elbow_Yaw": 0.3,
+        "Waist": 0.0,
+        "Left_Hip_Pitch": -1.2,
+        "Right_Hip_Pitch": -1.2,
+        "Left_Hip_Roll": 0.8,
+        "Right_Hip_Roll": -0.8,
+        "Left_Hip_Yaw": 0.4,
+        "Right_Hip_Yaw": -0.4,
+        "Left_Knee_Pitch": 1.8,
+        "Right_Knee_Pitch": 1.8,
+        "Left_Ankle_Pitch": 0.2,
+        "Right_Ankle_Pitch": 0.2,
+        "Left_Ankle_Roll": 0.0,
+        "Right_Ankle_Roll": 0.0
+      }
+    }
+  ]
+}
