@@ -56,19 +56,21 @@ def track_ang_vel_z_world_exp(
     return torch.exp(-ang_vel_error / (std ** 2))
 
 
-def align_projected_gravity_plus_x_l2(
+def align_projected_gravity_l2(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    target: tuple[float, float, float] = (1.0, 0.0, 0.0),
 ) -> torch.Tensor:
-    """Reward alignment of projected gravity with body +X (crawl orientation).
+    """Reward alignment of projected gravity with a target body-frame direction.
 
-    In crawl pose, gravity points along body +X (face-down horizontal).
-    reward = 1 - 0.5 * ||g_b - [1, 0, 0]||^2, in [-1, 1].
+    In a crawl pose gravity points along a fixed body axis: face-down gives
+    body +X (target=[1,0,0]); chest-up gives body -X (target=[-1,0,0]).
+    reward = 1 - 0.5 * ||g_b - target||^2, in [-1, 1].
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     g_b = asset.data.projected_gravity_b
-    target = torch.tensor([1.0, 0.0, 0.0], dtype=g_b.dtype, device=g_b.device)
-    dist_sq = torch.sum(torch.square(g_b - target), dim=1)
+    target_t = torch.tensor(target, dtype=g_b.dtype, device=g_b.device)
+    dist_sq = torch.sum(torch.square(g_b - target_t), dim=1)
     return 1.0 - 0.5 * dist_sq
 
 

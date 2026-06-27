@@ -13,8 +13,14 @@ Controls:
     UP / DOWN        cycle which joint is selected
     LEFT / RIGHT     decrease / increase the selected joint by the step (0.05 rad)
     [ / ]            decrease / increase the base spawn height (z) by 0.01 m
+    U / O            decrease / increase base ROLL  by 0.05 rad
+    I / K            decrease / increase base PITCH by 0.05 rad
+    J / L            decrease / increase base YAW   by 0.05 rad
+    F                flip chest up <-> down (negate base pitch)
+    G                toggle auto-ground (drive base_z so the lowest contact link
+                     rests on the ground; on by default)
     R                reapply the pose from JSON (discard edits)
-    P                print the current pose as JSON (copy this into the env cfg)
+    P                print the pose as JSON + a constants.py block (paste into constants.py)
     H                print Trunk / hand / foot heights
     ESC              exit
 """
@@ -43,6 +49,7 @@ from isaaclab.assets import AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 
 from booster_train.assets.robots.booster import BOOSTER_T1_CFG
+from booster_train.tasks.manager_based.t1_crawl import constants as crawl_constants
 
 
 def rpy_to_quat_wxyz(roll: float, pitch: float, yaw: float) -> torch.Tensor:
@@ -109,14 +116,26 @@ def main():
     pose = load_pose(args_cli.pose)
     # Working state, edited interactively.
     base_z = float(pose["base_pos"][2])
+    # Mutable list so closures can edit roll/pitch/yaw in place without `nonlocal`.
+    base_rpy = [float(x) for x in pose["base_rpy"]]
     joint_vals = {n: float(v) for n, v in pose["joints"].items()}
     selected = 0
     editable = [n for n in joint_names if n in joint_vals]
     STEP = 0.05
     Z_STEP = 0.01
+    RPY_STEP = 0.05
+
+    # Contact links that should sit on the ground in a crawl stance. Auto-ground
+    # keeps the lowest of these at GROUND_CLEARANCE so nothing clips through z=0.
+    CONTACT_LINKS = [
+        n for n in ["left_hand_link", "right_hand_link", "left_foot_link", "right_foot_link"] if n in body_names
+    ]
+    contact_idx = [body_names.index(n) for n in CONTACT_LINKS]
+    GROUND_CLEARANCE = 0.0
+    auto_ground = {"v": True}
 
     def apply():
-        roll, pitch, yaw = pose["base_rpy"]
+        roll, pitch, yaw = base_rpy
         quat = rpy_to_quat_wxyz(float(roll), float(pitch), float(yaw)).to(device)
         origin = scene.env_origins.to(device)[0]
         root = torch.zeros(1, 7, device=device)
@@ -133,10 +152,17 @@ def main():
 
     def print_heights():
         bp = robot.data.body_pos_w[0]
-        print("\n=== Body heights (z, metres) ===")
+        origin_z = scene.env_origins[0, 2].item()
+        print("\n=== Body heights (z, metres; clearance = height above ground) ===")
         for n in ["Trunk", "left_hand_link", "right_hand_link", "left_foot_link", "right_foot_link"]:
             if n in body_names:
-                print(f"  {n:18s}: {bp[body_names.index(n), 2].item():.4f}")
+                z = bp[body_names.index(n), 2].item()
+                clearance = z - origin_z
+                flag = "  << BELOW GROUND" if (n in CONTACT_LINKS and clearance < 0) else ""
+                print(f"  {n:18s}: z={z:.4f}  clearance={clearance:+.4f}{flag}")
+        if contact_idx:
+            min_clear = min(bp[i, 2].item() - origin_z for i in contact_idx)
+            print(f"  lowest contact clearance: {min_clear:+.4f} (auto-ground {'ON' if auto_ground['v'] else 'OFF'})")
         print("================================\n")
 
     def export():
@@ -144,17 +170,29 @@ def main():
             "poses": [
                 {
                     "base_pos": [0.0, 0.0, round(base_z, 4)],
-                    "base_rpy": [round(float(x), 7) for x in pose["base_rpy"]],
+                    "base_rpy": [round(float(x), 7) for x in base_rpy],
                     "joints": {n: round(joint_vals[n], 4) for n in joint_names if n in joint_vals},
                 }
             ]
         }
         print("\n=== Current pose JSON (paste into assets/t1-crawl-pose.json) ===")
         print(json.dumps(out, indent=2))
-        print("\n=== joint_pos block for t1_crawl_env_cfg.py ===")
+        # constants.py block: facing comes from CRAWL_FACING in constants.py, so the
+        # exported names target whichever pose (face-down / chest-up) is configured.
+        # Prints every value the FACING preset needs for positioning: height, rot, joints.
+        quat = rpy_to_quat_wxyz(*[float(x) for x in base_rpy])
+        w, x, y, z = (round(float(v), 4) for v in quat)
+        facing = crawl_constants.CRAWL_FACING
+        prefix = "_FACE_DOWN" if facing == "down" else "_CHEST_UP"
+        rpy_round = [round(v, 4) for v in base_rpy]
+        print(f"\n=== constants.py block (CRAWL_FACING = \"{facing}\") ===")
+        print(f"{prefix}_HEIGHT = {base_z:.4f}")
+        print(f"{prefix}_ROT = ({w}, {x}, {y}, {z})    # rpy ≈ {rpy_round}")
+        print(f"{prefix}_JOINTS = {{")
         for n in joint_names:
             if n in joint_vals:
-                print(f'        "{n}": {joint_vals[n]:.3f},')
+                print(f'    "{n}": {joint_vals[n]:.3f},')
+        print("}")
         print("=== end ===\n")
 
     input_iface = carb.input.acquire_input_interface()
@@ -190,9 +228,29 @@ def main():
             base_z -= Z_STEP
             apply()
             print(f"base_z = {base_z:.3f}")
+        elif key in ("U", "O"):
+            base_rpy[0] += RPY_STEP if key == "O" else -RPY_STEP
+            apply()
+            print(f"base_rpy = [{base_rpy[0]:.3f}, {base_rpy[1]:.3f}, {base_rpy[2]:.3f}]")
+        elif key in ("I", "K"):
+            base_rpy[1] += RPY_STEP if key == "I" else -RPY_STEP
+            apply()
+            print(f"base_rpy = [{base_rpy[0]:.3f}, {base_rpy[1]:.3f}, {base_rpy[2]:.3f}]")
+        elif key in ("J", "L"):
+            base_rpy[2] += RPY_STEP if key == "L" else -RPY_STEP
+            apply()
+            print(f"base_rpy = [{base_rpy[0]:.3f}, {base_rpy[1]:.3f}, {base_rpy[2]:.3f}]")
+        elif key == "F":
+            base_rpy[1] = -base_rpy[1]
+            apply()
+            print(f"[flip chest] base_rpy = [{base_rpy[0]:.3f}, {base_rpy[1]:.3f}, {base_rpy[2]:.3f}]")
+        elif key == "G":
+            auto_ground["v"] = not auto_ground["v"]
+            print(f"[auto-ground] {'ON' if auto_ground['v'] else 'OFF'}")
         elif key == "R":
             for n, v in pose["joints"].items():
                 joint_vals[n] = float(v)
+            base_rpy[:] = [float(x) for x in pose["base_rpy"]]
             apply()
             print("[reset to JSON]")
         elif key == "P":
@@ -210,7 +268,8 @@ def main():
     print_heights()
 
     print("Controls: UP/DOWN select joint | LEFT/RIGHT adjust | [ / ] base height")
-    print("          R reset | P export JSON | H heights | ESC exit")
+    print("          U/O roll | I/K pitch | J/L yaw | F flip chest up<->down")
+    print("          G auto-ground (ON) | R reset | P export JSON | H heights | ESC exit")
     print(f"[selected] {editable[selected]} = {joint_vals[editable[selected]]:.3f}\n")
 
     dt = sim.get_physics_dt()
@@ -219,6 +278,13 @@ def main():
             apply()
             sim.step()
             scene.update(dt)
+            # Drive base_z so the lowest contact link rests on the ground. body_pos_w
+            # is valid after the step, so the correction lands on the next apply().
+            if auto_ground["v"] and contact_idx:
+                bp = robot.data.body_pos_w[0]
+                origin_z = scene.env_origins[0, 2].item()
+                min_clear = min(bp[i, 2].item() - origin_z for i in contact_idx)
+                base_z -= min_clear - GROUND_CLEARANCE
     finally:
         input_iface.unsubscribe_to_keyboard_events(keyboard, sub)
 

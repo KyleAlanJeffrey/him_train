@@ -27,42 +27,16 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from booster_train.assets.robots.booster import BOOSTER_T1_CFG
+from . import constants as c
 from . import mdp
 
-# T1 crawl initial state: body horizontal, all 4 limbs on ground.
-# Rotation (w,x,y,z) = 90° about world Y → body +X points world -Z (face-down),
-# body +Z points world +X (forward). This gives projected_gravity_b ≈ [1, 0, 0].
-# Joint angles are within T1 limits and position the robot in quadruped stance.
-# NOTE: z=0.28 is an estimate; tune after first simulation run.
+# Init state and reward tunables live in constants.py — edit them there.
+# CRAWL_FACING selects face-down vs chest-up (rot + reward target + joint pose).
 T1_CRAWL_CFG = BOOSTER_T1_CFG.replace(
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.28),
-        rot=(0.7071, 0.0, 0.7071, 0.0),
-        joint_pos={
-            "AAHead_yaw": 0.000,
-            "Left_Shoulder_Pitch": -1.000,
-            "Right_Shoulder_Pitch": -1.000,
-            "Waist": 0.000,
-            "Head_pitch": -0.300,
-            "Left_Shoulder_Roll": -0.300,
-            "Right_Shoulder_Roll": 0.300,
-            "Left_Hip_Pitch": -1.150,
-            "Right_Hip_Pitch": -1.150,
-            "Left_Elbow_Pitch": 0.600,
-            "Right_Elbow_Pitch": 0.600,
-            "Left_Hip_Roll": 1.400,
-            "Right_Hip_Roll": -1.400,
-            "Left_Elbow_Yaw": -1.300,
-            "Right_Elbow_Yaw": 1.300,
-            "Left_Hip_Yaw": 0.950,
-            "Right_Hip_Yaw": -0.900,
-            "Left_Knee_Pitch": 1.700,
-            "Right_Knee_Pitch": 1.700,
-            "Left_Ankle_Pitch": -0.700,
-            "Right_Ankle_Pitch": -0.700,
-            "Left_Ankle_Roll": -0.000,
-            "Right_Ankle_Roll": 0.000,
-        },
+        pos=(0.0, 0.0, c.FACING["height"]),
+        rot=c.FACING["rot"],
+        joint_pos=dict(c.FACING["joints"]),
         joint_vel={".*": 0.0},
     )
 )
@@ -283,27 +257,28 @@ class RewardsCfg:
     # (body +X = world down), rolling about body X = yawing in world frame.
     track_lin_vel_yz_exp = RewTerm(
         func=mdp.track_lin_vel_yz_base_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.25},
+        weight=c.W_TRACK_LIN_VEL,
+        params={"command_name": "base_velocity", "std": c.STD_TRACK_LIN_VEL},
     )
     track_ang_vel_x_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.25},
+        weight=c.W_TRACK_ANG_VEL,
+        params={"command_name": "base_velocity", "std": c.STD_TRACK_ANG_VEL},
     )
 
-    # --- orientation (crawl: gravity should point along body +X) ---
+    # --- orientation (crawl: gravity should point along the facing's body axis) ---
     crawl_orientation = RewTerm(
-        func=mdp.align_projected_gravity_plus_x_l2,
-        weight=0.2,
+        func=mdp.align_projected_gravity_l2,
+        weight=c.W_CRAWL_ORIENT,
+        params={"target": c.FACING["gravity_target"]},
     )
 
     # --- base height (Trunk ~0.28m when crawling) ---
     base_height_l2 = RewTerm(
         func=mdp.base_height_l2,
-        weight=-0.1,
+        weight=c.W_BASE_HEIGHT,
         params={
-            "target_height": 0.28,
+            "target_height": c.TARGET_BASE_HEIGHT,
             "asset_cfg": SceneEntityCfg("robot", body_names="Trunk"),
         },
     )
@@ -311,43 +286,43 @@ class RewardsCfg:
     # --- joint regularization ---
     joint_deviation_all = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.01,
+        weight=c.W_JOINT_DEVIATION,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
     # --- safety limits ---
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-5.0,
+        weight=c.W_DOF_POS_LIMITS,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
     torque_limits = RewTerm(
         func=mdp.applied_torque_limits,
-        weight=-5.0,
+        weight=c.W_TORQUE_LIMITS,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
     # --- effort regularization ---
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1e-4)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=c.W_ACTION_RATE)
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=c.W_DOF_TORQUES)
 
     # --- contact penalties (penalize non-foot/hand contacts) ---
     undesired_body_contact_penalty = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-5.0,
+        weight=c.W_UNDESIRED_CONTACT,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
                 body_names="^(?!.*foot_link|.*hand_link).*",
             ),
-            "threshold": 1.0,
+            "threshold": c.UNDESIRED_CONTACT_THRESHOLD,
         },
     )
 
     # --- slippage penalty (lateral velocity of contact bodies when in contact) ---
     slippage = RewTerm(
         func=mdp.feet_slide,
-        weight=-0.2,
+        weight=c.W_SLIPPAGE,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
@@ -373,7 +348,7 @@ class RewardsCfg:
     # --- ground contact enforcement ---
     both_feet_air = RewTerm(
         func=mdp.both_feet_air,
-        weight=-0.5,
+        weight=c.W_BOTH_FEET_AIR,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
@@ -384,7 +359,7 @@ class RewardsCfg:
 
     both_hand_air = RewTerm(
         func=mdp.both_feet_air,
-        weight=-0.5,
+        weight=c.W_BOTH_HAND_AIR,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
@@ -395,7 +370,7 @@ class RewardsCfg:
 
     both_left_air = RewTerm(
         func=mdp.both_feet_air,
-        weight=-0.1,
+        weight=c.W_BOTH_LEFT_AIR,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
@@ -406,7 +381,7 @@ class RewardsCfg:
 
     both_right_air = RewTerm(
         func=mdp.both_feet_air,
-        weight=-0.1,
+        weight=c.W_BOTH_RIGHT_AIR,
         params={
             "sensor_cfg": SceneEntityCfg(
                 "contact_forces",
