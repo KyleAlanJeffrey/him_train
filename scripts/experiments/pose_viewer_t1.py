@@ -48,6 +48,8 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 
+from isaaclab.utils.math import quat_apply
+
 from booster_train.assets.robots.booster import BOOSTER_T1_CFG
 from booster_train.tasks.manager_based.t1_crawl import constants as crawl_constants
 
@@ -127,10 +129,45 @@ def main():
 
     # Contact links that should sit on the ground in a crawl stance. Auto-ground
     # keeps the lowest of these at GROUND_CLEARANCE so nothing clips through z=0.
-    CONTACT_LINKS = [
-        n for n in ["left_hand_link", "right_hand_link", "left_foot_link", "right_foot_link"] if n in body_names
-    ]
-    contact_idx = [body_names.index(n) for n in CONTACT_LINKS]
+    #
+    # body_pos_w is the link *origin*, not the collision surface — the hand/foot
+    # geometry is offset from it (per the URDF), so measuring the origin reports
+    # the wrong contact height. We approximate each contact link's collision shape
+    # by its bounding box (center + half-extents in the link frame, from the URDF
+    # <collision> tags) and transform the 8 corners into world space to find the
+    # true lowest point. Hand cylinders are over-approximated by their bbox, which
+    # is conservative (errs toward "touching").
+    CONTACT_BOXES = {
+        # link: (center_xyz, half_extents_xyz) in the link frame
+        "left_hand_link": ((0.0, 0.12, 0.0), (0.029, 0.065, 0.029)),
+        "right_hand_link": ((0.0, -0.12, 0.0), (0.029, 0.065, 0.029)),
+        "left_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
+        "right_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
+    }
+    CONTACT_LINKS = [n for n in CONTACT_BOXES if n in body_names]
+    contact_idx = {n: body_names.index(n) for n in CONTACT_LINKS}
+
+    def _corners(center, half):
+        c = torch.tensor(center, dtype=torch.float32, device=device)
+        h = torch.tensor(half, dtype=torch.float32, device=device)
+        signs = torch.tensor(
+            [[sx, sy, sz] for sx in (1.0, -1.0) for sy in (1.0, -1.0) for sz in (1.0, -1.0)],
+            dtype=torch.float32,
+            device=device,
+        )
+        return c + signs * h  # (8, 3) local corner points
+
+    contact_corners = {n: _corners(*CONTACT_BOXES[n]) for n in CONTACT_LINKS}
+
+    def contact_clearance(name):
+        """Lowest world-z of a contact link's collision box, relative to the ground."""
+        idx = contact_idx[name]
+        pos = robot.data.body_pos_w[0, idx]
+        quat = robot.data.body_quat_w[0, idx]
+        corners = contact_corners[name]
+        world = quat_apply(quat.unsqueeze(0).expand(corners.shape[0], 4), corners) + pos
+        return world[:, 2].min().item() - scene.env_origins[0, 2].item()
+
     GROUND_CLEARANCE = 0.0
     auto_ground = {"v": True}
 
@@ -153,15 +190,18 @@ def main():
     def print_heights():
         bp = robot.data.body_pos_w[0]
         origin_z = scene.env_origins[0, 2].item()
-        print("\n=== Body heights (z, metres; clearance = height above ground) ===")
-        for n in ["Trunk", "left_hand_link", "right_hand_link", "left_foot_link", "right_foot_link"]:
-            if n in body_names:
-                z = bp[body_names.index(n), 2].item()
-                clearance = z - origin_z
-                flag = "  << BELOW GROUND" if (n in CONTACT_LINKS and clearance < 0) else ""
-                print(f"  {n:18s}: z={z:.4f}  clearance={clearance:+.4f}{flag}")
-        if contact_idx:
-            min_clear = min(bp[i, 2].item() - origin_z for i in contact_idx)
+        print("\n=== Body heights (clearance = collision surface above ground) ===")
+        # Trunk: report the link origin (not a contact link).
+        if "Trunk" in body_names:
+            z = bp[body_names.index("Trunk"), 2].item()
+            print(f"  {'Trunk':18s}: origin_z={z:.4f}  clearance={z - origin_z:+.4f}")
+        # Contact links: report the true lowest collision-surface clearance.
+        for n in CONTACT_LINKS:
+            clearance = contact_clearance(n)
+            flag = "  << BELOW GROUND" if clearance < 0 else ""
+            print(f"  {n:18s}: contact_clearance={clearance:+.4f}{flag}")
+        if CONTACT_LINKS:
+            min_clear = min(contact_clearance(n) for n in CONTACT_LINKS)
             print(f"  lowest contact clearance: {min_clear:+.4f} (auto-ground {'ON' if auto_ground['v'] else 'OFF'})")
         print("================================\n")
 
@@ -278,12 +318,10 @@ def main():
             apply()
             sim.step()
             scene.update(dt)
-            # Drive base_z so the lowest contact link rests on the ground. body_pos_w
-            # is valid after the step, so the correction lands on the next apply().
-            if auto_ground["v"] and contact_idx:
-                bp = robot.data.body_pos_w[0]
-                origin_z = scene.env_origins[0, 2].item()
-                min_clear = min(bp[i, 2].item() - origin_z for i in contact_idx)
+            # Drive base_z so the lowest contact collision surface rests on the ground.
+            # body poses are valid after the step, so the correction lands on next apply().
+            if auto_ground["v"] and CONTACT_LINKS:
+                min_clear = min(contact_clearance(n) for n in CONTACT_LINKS)
                 base_z -= min_clear - GROUND_CLEARANCE
     finally:
         input_iface.unsubscribe_to_keyboard_events(keyboard, sub)

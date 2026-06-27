@@ -48,8 +48,8 @@ _FACE_DOWN_JOINTS = {
 }
 
 # --- Chest-up crawl pose (belly-up, limbs reaching back to ground) ---
-_CHEST_UP_HEIGHT = 0.1824                       # base spawn z (m)
-_CHEST_UP_ROT = (0.6521, 0.0, -0.7581, 0.0)     # tuned -98.6° lean about world Y (rpy ≈ [0, -1.7208, 0])
+_CHEST_UP_HEIGHT = 0.2314
+_CHEST_UP_ROT = (0.6328, 0.0158, -0.7739, 0.0194)    # rpy ≈ [0.05, -1.7708, 0.0]
 _CHEST_UP_JOINTS = {
     "AAHead_yaw": 0.000,
     "Left_Shoulder_Pitch": -1.530,
