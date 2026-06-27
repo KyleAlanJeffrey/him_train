@@ -397,6 +397,14 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
+    # Reset if the robot flips away from its crawl facing (tipped past 90°, i.e.
+    # gravity no longer points along the facing's body axis). Facing-aware via
+    # the same gravity_target used by the orientation reward.
+    flipped = DoneTerm(
+        func=mdp.crawl_flipped,
+        params={"target": c.FACING["gravity_target"], "min_alignment": 0.0},
+    )
+
 
 @configclass
 class T1CrawlEnvCfg(ManagerBasedRLEnvCfg):
