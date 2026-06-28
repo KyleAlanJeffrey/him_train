@@ -138,9 +138,11 @@ def main():
     # true lowest point. Hand cylinders are over-approximated by their bbox, which
     # is conservative (errs toward "touching").
     CONTACT_BOXES = {
-        # link: (center_xyz, half_extents_xyz) in the link frame
-        "left_hand_link": ((0.0, 0.12, 0.0), (0.029, 0.065, 0.029)),
-        "right_hand_link": ((0.0, -0.12, 0.0), (0.029, 0.065, 0.029)),
+        # link: (center_xyz, half_extents_xyz) in the link frame.
+        # Hands: the ball end-effector sphere (r=0.035 at y=±0.2115), NOT the forearm
+        # cylinder — the ball is the actual crawl contact point.
+        "left_hand_link": ((0.0, 0.2115, 0.0), (0.035, 0.035, 0.035)),
+        "right_hand_link": ((0.0, -0.2115, 0.0), (0.035, 0.035, 0.035)),
         "left_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
         "right_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
     }

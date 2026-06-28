@@ -48,32 +48,32 @@ _FACE_DOWN_JOINTS = {
 }
 
 # --- Chest-up crawl pose (belly-up, limbs reaching back to ground) ---
-_CHEST_UP_HEIGHT = 0.2314
-_CHEST_UP_ROT = (0.6328, 0.0158, -0.7739, 0.0194)    # rpy ≈ [0.05, -1.7708, 0.0]
+_CHEST_UP_HEIGHT = 0.1999
+_CHEST_UP_ROT = (0.7071, 0.0, -0.7071, 0.0)    # rpy ≈ [0.0, -1.5708, 0.0]
 _CHEST_UP_JOINTS = {
     "AAHead_yaw": 0.000,
-    "Left_Shoulder_Pitch": -1.530,
-    "Right_Shoulder_Pitch": -1.530,
+    "Left_Shoulder_Pitch": -0.860,
+    "Right_Shoulder_Pitch": -0.860,
     "Waist": 0.000,
     "Head_pitch": -0.300,
-    "Left_Shoulder_Roll": -0.080,
-    "Right_Shoulder_Roll": 0.080,
-    "Left_Hip_Pitch": 0.000,
-    "Right_Hip_Pitch": 0.000,
-    "Left_Elbow_Pitch": 1.560,
-    "Right_Elbow_Pitch": -1.560,
-    "Left_Hip_Roll": 1.000,
-    "Right_Hip_Roll": -1.000,
-    "Left_Elbow_Yaw": 1.660,
-    "Right_Elbow_Yaw": 1.660,
-    "Left_Hip_Yaw": 0.000,
-    "Right_Hip_Yaw": 0.000,
-    "Left_Knee_Pitch": 1.460,
-    "Right_Knee_Pitch": 1.460,
-    "Left_Ankle_Pitch": 0.130,
-    "Right_Ankle_Pitch": 0.130,
-    "Left_Ankle_Roll": -0.000,
-    "Right_Ankle_Roll": 0.000,
+    "Left_Shoulder_Roll": 0.050,
+    "Right_Shoulder_Roll": -0.050,
+    "Left_Hip_Pitch": -0.620,
+    "Right_Hip_Pitch": -0.620,
+    "Left_Elbow_Pitch": 0.860,
+    "Right_Elbow_Pitch": 0.860,
+    "Left_Hip_Roll": 0.850,
+    "Right_Hip_Roll": -0.850,
+    "Left_Elbow_Yaw": 1.590,
+    "Right_Elbow_Yaw": -1.590,
+    "Left_Hip_Yaw": -0.540,
+    "Right_Hip_Yaw": 0.540,
+    "Left_Knee_Pitch": 1.920,
+    "Right_Knee_Pitch": 1.920,
+    "Left_Ankle_Pitch": 0.170,
+    "Right_Ankle_Pitch": 0.170,
+    "Left_Ankle_Roll": -0.110,
+    "Right_Ankle_Roll": 0.110,
 }
 
 # Per-facing presets: init height (m) + rotation (w,x,y,z) + body-frame gravity
@@ -97,13 +97,15 @@ FACING = FACING_PRESETS[CRAWL_FACING]
 # =============================================================================
 # Reward weights
 # =============================================================================
-W_TRACK_LIN_VEL = 2.0          # track commanded linear velocity (body YZ)
-W_TRACK_ANG_VEL = 2.0          # track commanded angular velocity (world yaw)
+W_TRACK_LIN_VEL = 4.0          # track commanded linear velocity (body YZ) — raised so moving beats standing
+W_TRACK_ANG_VEL = 3.0          # track commanded angular velocity (world yaw)
 W_CRAWL_ORIENT = 0.2           # keep gravity aligned with the facing's body axis
+W_ALIVE = 1.0                  # per-step bonus for not terminating (counters give-up flipping)
+W_FLIPPED_PENALTY = -2000.0     # one-time penalty when the flipped termination fires
 W_BASE_HEIGHT = -0.1           # penalize Trunk height deviation from target
 W_JOINT_DEVIATION = -0.01      # penalize joint drift from default pose
 W_DOF_POS_LIMITS = -5.0        # penalize hitting joint position limits
-W_TORQUE_LIMITS = -5.0         # penalize hitting torque limits (off)
+W_TORQUE_LIMITS = -0.001        # gentle torque-saturation regularizer (was -5.0: dominated reward)
 W_ACTION_RATE = -0.01          # penalize fast action changes
 W_DOF_TORQUES = -1e-4          # penalize large torques
 W_UNDESIRED_CONTACT = -5.0     # penalize non-foot/hand ground contact
@@ -116,7 +118,7 @@ W_BOTH_RIGHT_AIR = -0.1        # penalize right foot+hand both off the ground
 # =============================================================================
 # Reward params
 # =============================================================================
-STD_TRACK_LIN_VEL = 0.25       # exp-kernel width for linear-velocity tracking
-STD_TRACK_ANG_VEL = 0.25       # exp-kernel width for angular-velocity tracking
+STD_TRACK_LIN_VEL = 0.5        # exp-kernel width — wider so partial progress toward the target is rewarded
+STD_TRACK_ANG_VEL = 0.5        # exp-kernel width for angular-velocity tracking
 TARGET_BASE_HEIGHT = 0.28      # desired Trunk height (m) when crawling
 UNDESIRED_CONTACT_THRESHOLD = 1.0  # contact force (N) above which contact is "undesired"

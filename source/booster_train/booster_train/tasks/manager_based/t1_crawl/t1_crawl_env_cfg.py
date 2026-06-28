@@ -85,7 +85,7 @@ class CommandsCfg:
         rel_standing_envs=0.05,
         debug_vis=True,
         ranges=mdp.CrawlVelocityCommandCfg.Ranges(
-            lin_vel_z=(-1.0, 2.5),  # forward (body Z = world +X when crawling)
+            lin_vel_z=(0.0, 0.8),  # forward (body Z = world +X when crawling) — reachable range to learn to move
             lin_vel_y=(0.0, 0.0),  # lateral (body Y)
             ang_vel_x=(-1.0, 1.0),  # roll about body X (= world yaw when crawling)
         ),
@@ -271,6 +271,15 @@ class RewardsCfg:
         func=mdp.align_projected_gravity_l2,
         weight=c.W_CRAWL_ORIENT,
         params={"target": c.FACING["gravity_target"]},
+    )
+
+    # --- survival: reward staying alive, heavily penalize the flip termination so
+    # the policy can't "give up" by flipping to escape ongoing penalties. ---
+    alive = RewTerm(func=mdp.is_alive, weight=c.W_ALIVE)
+    flipped_penalty = RewTerm(
+        func=mdp.is_terminated_term,
+        weight=c.W_FLIPPED_PENALTY,
+        params={"term_keys": "flipped"},
     )
 
     # --- base height (Trunk ~0.28m when crawling) ---
