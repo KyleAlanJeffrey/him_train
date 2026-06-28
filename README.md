@@ -100,6 +100,19 @@ python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0
 python scripts/rsl_rl/train.py --task=Booster-K1-Fight_001-v0 --headless --device cuda:0
 ```
 
+**Continue / resume training** (`--resume`; defaults to the latest run + latest checkpoint)
+
+```bash
+# resume from the most recent run and checkpoint
+python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0 --resume
+
+# resume from a specific run folder and/or checkpoint file
+#   --load_run   = run folder name under logs/rsl_rl/<experiment>/  (e.g. 2026-06-28_18-06-31)
+#   --checkpoint = checkpoint file name within that run             (e.g. model_1500.pt)
+python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0 \
+    --resume --load_run=2026-06-28_18-06-31 --checkpoint=model_1500.pt
+```
+
 **Play + export policy** (writes TorchScript/ONNX to `logs/rsl_rl/<experiment>/<run>/exported/`)
 
 ```bash
@@ -123,6 +136,52 @@ python scripts/experiments/pose_viewer_t1.py --pose assets/t1-crawl-pose.json
 python scripts/replay_npz.py --motion <PATH_TO_BOOSTER_ASSETS>/motions/K1/<MOTION>.npz
 python scripts/replay_npz.py --registry_name <WANDB_REGISTRY_NAME>
 ```
+
+### Viewing the simulation (WebRTC stream)
+
+On the Brev / Isaac Launchable host (VSCode + Kit App Streaming `web-viewer`)
+there is no local window. Append `--livestream 2` to stream the running app over
+WebRTC, then watch it in the streaming viewer tab.
+
+```bash
+# stream a single robot playing a policy (recommended for viewing)
+python scripts/rsl_rl/play.py --task=T1-crawl-v0 --num_envs=1 --livestream 2
+```
+
+- Use `--livestream 2` (WebRTC) — **not** `--headless`; livestream runs without a
+  local window and starts the stream the viewer connects to. (Equivalent: `LIVESTREAM=2` in the env.)
+- Open the viewer in a **new browser tab** at your VSCode/shareable URL with
+  `/viewer` appended (e.g. `https://<host>/viewer`). Keep **only one** viewer tab open.
+- Start the app **first** and wait for `Simulation App Startup Complete` in the
+  console, *then* open (or refresh) the `/viewer` tab. First launch is slow while
+  shaders cache; subsequent runs just need a refresh. Stop with `Ctrl+C`.
+- You can add `--livestream 2` to `train.py` to watch training, but it is heavy
+  (thousands of envs) and slows training significantly — prefer `play.py` for viewing.
+
+### TensorBoard
+
+Training writes TensorBoard logs to `logs/rsl_rl/<experiment>/<run>/` (the default
+rsl_rl logger). From a VSCode terminal, point TensorBoard at the experiment (or
+`logs/rsl_rl` to see all runs):
+
+```bash
+python -m tensorboard.main --logdir logs/rsl_rl --port 6006
+# T1 crawl specifically:
+python -m tensorboard.main --logdir logs/rsl_rl/t1_crawl --port 6006
+```
+
+If TensorBoard isn't installed in the Isaac Lab python: `python -m pip install --user tensorboard`.
+
+Unlike the `/viewer` stream, port 6006 is **not** one of the externally-opened
+Brev ports, so you can't just hit `<host>:6006`. Two ways to view it:
+
+- **VSCode's built-in TensorBoard / port forwarding** — the easiest: open the
+  command palette → *Python: Launch TensorBoard*, or use the **Ports** panel to
+  forward 6006, then click the forwarded address. VSCode tunnels it for you.
+- **From your local machine via the Brev CLI** — `brev port-forward <instance> -p 6006:6006`, then open `http://localhost:6006` locally.
+
+(`http://localhost:6006` typed directly into the in-browser VSCode Simple Browser
+won't work — that "localhost" is *your* machine, not the instance.)
 
 ---
 

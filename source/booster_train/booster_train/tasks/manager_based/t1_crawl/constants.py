@@ -99,9 +99,9 @@ FACING = FACING_PRESETS[CRAWL_FACING]
 # =============================================================================
 W_TRACK_LIN_VEL = 4.0          # track commanded linear velocity (body YZ) — raised so moving beats standing
 W_TRACK_ANG_VEL = 3.0          # track commanded angular velocity (world yaw)
-W_CRAWL_ORIENT = 0.2           # keep gravity aligned with the facing's body axis
+W_CRAWL_ORIENT = 0.5           # keep gravity aligned with the facing's body axis
 W_ALIVE = 1.0                  # per-step bonus for not terminating (counters give-up flipping)
-W_FLIPPED_PENALTY = -2000.0     # one-time penalty when the flipped termination fires
+W_FLIPPED_PENALTY = -6000.0     # one-time penalty when the flipped termination fires
 W_BASE_HEIGHT = -0.1           # penalize Trunk height deviation from target
 W_JOINT_DEVIATION = -0.01      # penalize joint drift from default pose
 W_DOF_POS_LIMITS = -5.0        # penalize hitting joint position limits
