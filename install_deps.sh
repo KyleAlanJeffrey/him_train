@@ -8,20 +8,23 @@
 # then runs check_env.sh to verify.
 #
 # Interpreter is auto-detected (active Isaac Lab python, else isaaclab.sh -p),
-# same as check_env.sh. Installs auto-retry with --user when the system
-# site-packages is read-only (common on Isaac Sim cloud images).
+# same as check_env.sh. Installs auto-retry with sudo when the system
+# site-packages is read-only (common on Isaac Sim cloud images) — a --user
+# retry does NOT work here, because Isaac Sim puts its bundled site-packages
+# ahead of the user site on sys.path, so a --user install is shadowed by the
+# pre-bundled copy and never imported.
 #
 # Env vars:
 #   ISAACLAB_PATH        Isaac Lab dir (for the launcher fallback)
 #   BOOSTER_ASSETS_PATH  booster_assets repo dir (else auto-searched)
-#   PIP_USER=1           force --user installs from the start
+#   PIP_SUDO=1           use sudo for installs from the start
 #
 # NOTE: this installs project deps; it does NOT repair a broken Isaac Sim pip
 # (the setuptools-81 / find_distributions issue). See check_env.sh header for that.
 #
 # Usage:
 #   ./install_deps.sh
-#   BOOSTER_ASSETS_PATH=/workspace/booster_assets PIP_USER=1 ./install_deps.sh
+#   BOOSTER_ASSETS_PATH=/workspace/booster_assets PIP_SUDO=1 ./install_deps.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,27 +50,44 @@ if [[ ${#PY[@]} -eq 0 ]]; then
 fi
 echo "[install_deps] python: ${PY[*]}"
 
-USE_USER="${PIP_USER:-0}"
+# Resolve the real interpreter binary — sudo needs the executable directly, not
+# the isaaclab.sh / python.sh wrapper (which sets up env we don't need for pip).
+PYEXE="$("${PY[@]}" -c 'import sys; print(sys.executable)' 2>/dev/null | tail -n1)"
+if [[ -z "$PYEXE" || ! -x "$PYEXE" ]]; then
+  echo "[install_deps] error: could not resolve python executable (got '$PYEXE')." >&2
+  exit 2
+fi
 
-# pip install with auto --user fallback on a read-only/permission-denied site.
+USE_SUDO="${PIP_SUDO:-0}"
+
+# pip install with auto sudo fallback on a read-only/permission-denied site.
+# --user does NOT help on Isaac Sim images (bundled site shadows the user site),
+# so we escalate to sudo against the real interpreter binary instead.
 pip_install() {
-  local args=()
-  [[ "$USE_USER" == "1" ]] && args+=(--user)
-  if "${PY[@]}" -m pip install "${args[@]}" "$@"; then
+  if [[ "$USE_SUDO" == "1" ]]; then
+    sudo "$PYEXE" -m pip install "$@"
+    return $?
+  fi
+  if "${PY[@]}" -m pip install "$@"; then
     return 0
   fi
-  if [[ "$USE_USER" != "1" ]]; then
-    echo "[install_deps] install failed — retrying with --user (system site likely read-only)..." >&2
-    USE_USER=1   # stick with --user for the rest of the run
-    "${PY[@]}" -m pip install --user "$@"
-  else
+  echo "[install_deps] install failed — retrying with sudo (system site likely read-only)..." >&2
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "[install_deps] error: sudo not found. Either run as a user who can write to" >&2
+    echo "  the Isaac Sim site-packages, or chown it: " >&2
+    echo "  sudo chown -R \"\$(whoami)\" \"\$(dirname \"\$($PYEXE -c 'import site;print(site.getsitepackages()[0])')\")\"" >&2
     return 1
   fi
+  USE_SUDO=1   # stick with sudo for the rest of the run
+  sudo "$PYEXE" -m pip install "$@"
 }
 
 # --- 1. rsl_rl (pinned) + onnxscript ---
+# --force-reinstall --no-deps cleanly overwrites any pre-bundled rsl-rl-lib in
+# the read-only system site (its deps — torch/numpy/etc — are already satisfied
+# by Isaac Sim, so we must not let pip try to touch them).
 echo "[install_deps] (1/3) rsl-rl-lib==$RSL_RL_VERSION + onnxscript"
-pip_install "rsl-rl-lib==$RSL_RL_VERSION" "onnxscript>=0.5"
+pip_install --force-reinstall --no-deps "rsl-rl-lib==$RSL_RL_VERSION" "onnxscript>=0.5"
 
 # --- 2. booster_assets (editable) ---
 echo "[install_deps] (2/3) booster_assets"
