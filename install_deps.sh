@@ -8,23 +8,30 @@
 # then runs check_env.sh to verify.
 #
 # Interpreter is auto-detected (active Isaac Lab python, else isaaclab.sh -p),
-# same as check_env.sh. Installs auto-retry with sudo when the system
-# site-packages is read-only (common on Isaac Sim cloud images) — a --user
-# retry does NOT work here, because Isaac Sim puts its bundled site-packages
-# ahead of the user site on sys.path, so a --user install is shadowed by the
-# pre-bundled copy and never imported.
+# same as check_env.sh.
+#
+# Isaac Sim cloud images (e.g. Brev) run as a non-root user with a READ-ONLY
+# bundled site-packages and no sudo. So everything installs with `pip --user`
+# into ~/.local. But Isaac's bundled site-packages sits AHEAD of the user site
+# on sys.path, so a plain --user install of a package that already ships in the
+# bundle (rsl-rl-lib, pinned there at an older version) would be shadowed and
+# never imported. We fix that by prepending the user-site dir to PYTHONPATH and
+# persisting that export to ~/.bashrc, so the --user copy wins. The launcher
+# (python.sh) preserves PYTHONPATH, so both `python` and `isaaclab.sh -p` see it.
 #
 # Env vars:
 #   ISAACLAB_PATH        Isaac Lab dir (for the launcher fallback)
 #   BOOSTER_ASSETS_PATH  booster_assets repo dir (else auto-searched)
-#   PIP_SUDO=1           use sudo for installs from the start
+#   NO_BASHRC=1          don't append the PYTHONPATH export to ~/.bashrc
 #
 # NOTE: this installs project deps; it does NOT repair a broken Isaac Sim pip
 # (the setuptools-81 / find_distributions issue). See check_env.sh header for that.
+# NOTE: --user installs live on the container's writable layer / ~/.local and may
+# not survive a container rebuild on ephemeral cloud images — re-run if recreated.
 #
 # Usage:
 #   ./install_deps.sh
-#   BOOSTER_ASSETS_PATH=/workspace/booster_assets PIP_SUDO=1 ./install_deps.sh
+#   BOOSTER_ASSETS_PATH=/workspace/booster_assets ./install_deps.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,44 +57,30 @@ if [[ ${#PY[@]} -eq 0 ]]; then
 fi
 echo "[install_deps] python: ${PY[*]}"
 
-# Resolve the real interpreter binary — sudo needs the executable directly, not
-# the isaaclab.sh / python.sh wrapper (which sets up env we don't need for pip).
-PYEXE="$("${PY[@]}" -c 'import sys; print(sys.executable)' 2>/dev/null | tail -n1)"
-if [[ -z "$PYEXE" || ! -x "$PYEXE" ]]; then
-  echo "[install_deps] error: could not resolve python executable (got '$PYEXE')." >&2
+# User site-packages dir (where --user installs land). We prepend this to
+# PYTHONPATH so a --user install overrides anything Isaac ships in its bundled,
+# read-only site (the only way a non-root user can win the sys.path race).
+USER_SITE="$("${PY[@]}" -c 'import site; print(site.getusersitepackages())' 2>/dev/null | tail -n1)"
+if [[ -z "$USER_SITE" ]]; then
+  echo "[install_deps] error: could not resolve user site-packages dir." >&2
   exit 2
 fi
+# Make the override active for THIS run's verification step too.
+export PYTHONPATH="$USER_SITE:${PYTHONPATH:-}"
 
-USE_SUDO="${PIP_SUDO:-0}"
-
-# pip install with auto sudo fallback on a read-only/permission-denied site.
-# --user does NOT help on Isaac Sim images (bundled site shadows the user site),
-# so we escalate to sudo against the real interpreter binary instead.
+# pip install into the user site (no root / no sudo on Isaac Sim cloud images).
 pip_install() {
-  if [[ "$USE_SUDO" == "1" ]]; then
-    sudo "$PYEXE" -m pip install "$@"
-    return $?
-  fi
-  if "${PY[@]}" -m pip install "$@"; then
-    return 0
-  fi
-  echo "[install_deps] install failed — retrying with sudo (system site likely read-only)..." >&2
-  if ! command -v sudo >/dev/null 2>&1; then
-    echo "[install_deps] error: sudo not found. Either run as a user who can write to" >&2
-    echo "  the Isaac Sim site-packages, or chown it: " >&2
-    echo "  sudo chown -R \"\$(whoami)\" \"\$(dirname \"\$($PYEXE -c 'import site;print(site.getsitepackages()[0])')\")\"" >&2
-    return 1
-  fi
-  USE_SUDO=1   # stick with sudo for the rest of the run
-  sudo "$PYEXE" -m pip install "$@"
+  "${PY[@]}" -m pip install --user "$@"
 }
 
 # --- 1. rsl_rl (pinned) + onnxscript ---
-# --force-reinstall --no-deps cleanly overwrites any pre-bundled rsl-rl-lib in
-# the read-only system site (its deps — torch/numpy/etc — are already satisfied
-# by Isaac Sim, so we must not let pip try to touch them).
+# --force-reinstall --no-deps puts a clean rsl-rl-lib in the user site even when
+# an older copy ships in the bundle; --no-deps because its deps (torch/numpy/etc)
+# are already satisfied by Isaac Sim and must not be reinstalled. PYTHONPATH
+# (set above) then makes this user-site copy win over the bundled one.
 echo "[install_deps] (1/3) rsl-rl-lib==$RSL_RL_VERSION + onnxscript"
-pip_install --force-reinstall --no-deps "rsl-rl-lib==$RSL_RL_VERSION" "onnxscript>=0.5"
+pip_install --force-reinstall --no-deps "rsl-rl-lib==$RSL_RL_VERSION"
+pip_install "onnxscript>=0.5"
 
 # --- 2. booster_assets (editable) ---
 echo "[install_deps] (2/3) booster_assets"
@@ -108,6 +101,25 @@ fi
 echo "[install_deps] (3/3) booster_train (editable): $REPO_ROOT/source/booster_train"
 pip_install -e "$REPO_ROOT/source/booster_train"
 
+# --- persist PYTHONPATH so future shells + isaaclab.sh -p see the user-site copies ---
+# Without this, a new shell would import the bundled (older) rsl-rl-lib again.
+if [[ "${NO_BASHRC:-0}" != "1" ]]; then
+  BASHRC="$HOME/.bashrc"
+  MARKER="# booster_train: user-site ahead of Isaac Sim bundled site"
+  if ! grep -qsF "$MARKER" "$BASHRC" 2>/dev/null; then
+    {
+      echo ""
+      echo "$MARKER"
+      echo "export PYTHONPATH=\"$USER_SITE:\$PYTHONPATH\""
+    } >> "$BASHRC"
+    echo "[install_deps] appended PYTHONPATH export to $BASHRC"
+  else
+    echo "[install_deps] PYTHONPATH export already present in $BASHRC"
+  fi
+  echo "[install_deps] NOTE: run 'source $BASHRC' (or open a new shell) for it to take effect."
+fi
+
 # --- verify ---
+# PYTHONPATH is exported above, so this run already sees the user-site packages.
 echo "[install_deps] done — verifying with check_env.sh"
 "$REPO_ROOT/check_env.sh" || true
