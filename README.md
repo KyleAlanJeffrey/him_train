@@ -46,15 +46,15 @@ Clone these **outside** the `IsaacLab` directory (except Isaac Lab itself):
 | [rsl_rl](https://github.com/leggedrobotics/rsl_rl) | PPO trainer (installed into the Isaac Lab env) | Yes |
 | [booster_deploy](https://github.com/BoosterRobotics/booster_deploy) | Run exported policies in MuJoCo / on real robots | Optional (deploy only) |
 
-After installing, verify the environment is complete:
+Two helper scripts (both auto-detect the Isaac Lab python — active env, else `isaaclab.sh -p`):
 
 ```bash
-./check_env.sh                 # auto-detects the Isaac Lab python
-# or, from the Isaac Lab python directly:
-python scripts/check_env.py
+./install_deps.sh    # install rsl_rl (pinned), onnxscript, booster_assets + booster_train (editable)
+./check_env.sh       # verify everything is present
 ```
 
-It checks the Python version, the Isaac/rsl_rl/torch stack (incl. CUDA), the `booster_train` install, and that the `booster_assets` URDFs the tasks load are present.
+- `install_deps.sh` installs the project dependencies and auto-retries with `--user` on read-only sites (common on Isaac Sim cloud images). Set `BOOSTER_ASSETS_PATH=/path/to/booster_assets` if it isn't auto-found.
+- `check_env.sh` checks the Python version, the Isaac/rsl_rl/torch stack (incl. CUDA), the `booster_train` install, and that the `booster_assets` URDFs the tasks load are present. Run it from the Isaac Lab python directly via `python scripts/check_env.py`.
 
 ## Installation
 

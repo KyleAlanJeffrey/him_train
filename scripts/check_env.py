@@ -21,11 +21,16 @@ import sys
 OK, WARN, FAIL = "OK", "WARN", "FAIL"
 SYMBOL = {OK: "\033[32m✓\033[0m", WARN: "\033[33m!\033[0m", FAIL: "\033[31m✗\033[0m"}
 
-results: list[tuple[str, str, str]] = []
+results: list[tuple[str, str, str, str]] = []
+
+# Recommended fix commands (printed in the summary for whatever failed).
+FIX_INSTALL_DEPS = "./install_deps.sh   (installs rsl_rl, booster_assets, booster_train)"
+FIX_ISAACLAB = "install Isaac Lab: https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html"
+FIX_TORCH_BROKEN = "Isaac Sim torch prebundle is corrupted — see README 'Troubleshooting' (or use a fresh image)"
 
 
-def record(status: str, name: str, detail: str = "") -> None:
-    results.append((status, name, detail))
+def record(status: str, name: str, detail: str = "", fix: str = "") -> None:
+    results.append((status, name, detail, fix))
     print(f"  {SYMBOL[status]} {name:28s} {detail}")
 
 
@@ -44,14 +49,16 @@ def check_python() -> None:
     record(OK if (v.major, v.minor) >= (3, 10) else FAIL, "Python >= 3.10", detail)
 
 
-def check_importable(module: str, name: str, required: bool, version_dists: tuple[str, ...] = ()) -> bool:
+def check_importable(
+    module: str, name: str, required: bool, version_dists: tuple[str, ...] = (), fix: str = ""
+) -> bool:
     """Probe a module via find_spec (no import / no side effects)."""
     try:
         spec = importlib.util.find_spec(module)
     except (ImportError, ValueError):
         spec = None
     if spec is None:
-        record(FAIL if required else WARN, name, "not found" + ("" if required else " (optional)"))
+        record(FAIL if required else WARN, name, "not found" + ("" if required else " (optional)"), fix=fix)
         return False
     ver = _version(*version_dists) if version_dists else None
     record(OK, name, f"v{ver}" if ver else "found")
@@ -65,7 +72,7 @@ def check_torch() -> None:
     try:
         import torch
     except Exception as e:  # noqa: BLE001  (broken install, not just absent)
-        record(FAIL, "torch", f"installed but FAILS to import: {type(e).__name__}: {e}")
+        record(FAIL, "torch", f"installed but FAILS to import: {type(e).__name__}: {e}", fix=FIX_TORCH_BROKEN)
         return
     try:
         cuda = torch.cuda.is_available()
@@ -86,7 +93,7 @@ RSL_RL_INSTALL = "pip install rsl-rl-lib==5.0.1 onnxscript>=0.5"
 def check_rsl_rl() -> None:
     # PyPI name is "rsl-rl-lib" (import name "rsl_rl"); Isaac Lab 2.2 pins 5.0.1.
     if importlib.util.find_spec("rsl_rl") is None:
-        record(FAIL, "rsl_rl >= 5.0", f"not found → {RSL_RL_INSTALL}")
+        record(FAIL, "rsl_rl >= 5.0", "not found", fix=FIX_INSTALL_DEPS)
         return
     ver = _version("rsl-rl-lib", "rsl_rl", "rsl-rl")
     if ver is None:
@@ -97,18 +104,18 @@ def check_rsl_rl() -> None:
         status = OK if major >= 5 else FAIL
     except ValueError:
         status = WARN
-    detail = f"v{ver}" + (f" → need >=5.0: {RSL_RL_INSTALL}" if status == FAIL else "")
-    record(status, "rsl_rl >= 5.0", detail)
+    detail = f"v{ver}" + (" → need >=5.0" if status == FAIL else "")
+    record(status, "rsl_rl >= 5.0", detail, fix=FIX_INSTALL_DEPS if status == FAIL else "")
 
 
 def check_booster_assets() -> None:
     if importlib.util.find_spec("booster_assets") is None:
-        record(FAIL, "booster_assets", "not found (external data package)")
+        record(FAIL, "booster_assets", "not found (external data package)", fix=FIX_INSTALL_DEPS)
         return
     try:
         from booster_assets import BOOSTER_ASSETS_DIR
     except Exception as e:  # noqa: BLE001
-        record(FAIL, "booster_assets", f"import failed: {e}")
+        record(FAIL, "booster_assets", f"import failed: {e}", fix=FIX_INSTALL_DEPS)
         return
     if not os.path.isdir(BOOSTER_ASSETS_DIR):
         record(FAIL, "BOOSTER_ASSETS_DIR", f"missing dir: {BOOSTER_ASSETS_DIR}")
@@ -127,7 +134,7 @@ def check_booster_assets() -> None:
 def check_booster_train_editable() -> None:
     spec = importlib.util.find_spec("booster_train")
     if spec is None:
-        record(FAIL, "booster_train", "not installed (run: pip install -e source/booster_train)")
+        record(FAIL, "booster_train", "not installed", fix=FIX_INSTALL_DEPS)
         return
     loc = spec.origin or (spec.submodule_search_locations[0] if spec.submodule_search_locations else "?")
     record(OK, "booster_train", loc)
@@ -145,15 +152,16 @@ def main() -> int:
     print("\n=== booster_train environment check ===\n")
     print("Python / core:")
     safe("Python", check_python)
-    safe("numpy", lambda: check_importable("numpy", "numpy", required=True, version_dists=("numpy",)))
+    safe("numpy", lambda: check_importable("numpy", "numpy", required=True, version_dists=("numpy",), fix=FIX_ISAACLAB))
     safe("torch", check_torch)
-    safe("gymnasium", lambda: check_importable("gymnasium", "gymnasium", required=True, version_dists=("gymnasium",)))
+    safe("gymnasium", lambda: check_importable(
+        "gymnasium", "gymnasium", required=True, version_dists=("gymnasium",), fix=FIX_ISAACLAB))
     safe("rsl_rl >= 5.0", check_rsl_rl)
 
     print("\nIsaac stack (probed, not launched):")
-    safe("isaacsim", lambda: check_importable("isaacsim", "isaacsim", required=True))
-    safe("isaaclab", lambda: check_importable("isaaclab", "isaaclab", required=True))
-    safe("isaaclab_tasks", lambda: check_importable("isaaclab_tasks", "isaaclab_tasks", required=True))
+    safe("isaacsim", lambda: check_importable("isaacsim", "isaacsim", required=True, fix=FIX_ISAACLAB))
+    safe("isaaclab", lambda: check_importable("isaaclab", "isaaclab", required=True, fix=FIX_ISAACLAB))
+    safe("isaaclab_tasks", lambda: check_importable("isaaclab_tasks", "isaaclab_tasks", required=True, fix=FIX_ISAACLAB))
 
     print("\nProject package + data:")
     safe("booster_train", check_booster_train_editable)
@@ -163,12 +171,21 @@ def main() -> int:
     safe("psutil", lambda: check_importable("psutil", "psutil", required=False, version_dists=("psutil",)))
     safe("toml", lambda: check_importable("toml", "toml", required=False, version_dists=("toml",)))
 
-    n_fail = sum(1 for s, _, _ in results if s == FAIL)
-    n_warn = sum(1 for s, _, _ in results if s == WARN)
+    n_fail = sum(1 for s, *_ in results if s == FAIL)
+    n_warn = sum(1 for s, *_ in results if s == WARN)
     print("\n" + "=" * 48)
     if n_fail:
         print(f"\033[31mFAILED\033[0m: {n_fail} required check(s) failed, {n_warn} warning(s).")
-        print("Fix the ✗ items above before training.")
+        # Recommend fixes — dedup, install_deps.sh first since it covers the common ones.
+        fixes = []
+        for status, _, _, fix in results:
+            if status == FAIL and fix and fix not in fixes:
+                fixes.append(fix)
+        fixes.sort(key=lambda f: f != FIX_INSTALL_DEPS)  # install_deps.sh first
+        if fixes:
+            print("\nRecommended:")
+            for f in fixes:
+                print(f"  • {f}")
     elif n_warn:
         print(f"\033[33mOK with warnings\033[0m: {n_warn} warning(s) — review the ! items.")
     else:
