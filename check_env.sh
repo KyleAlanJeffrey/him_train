@@ -10,6 +10,14 @@
 #   ./check_env.sh                 # auto-detect
 #   ISAACLAB_PATH=/path/to/IsaacLab ./check_env.sh
 # Any extra args are forwarded to scripts/check_env.py.
+#
+# Installing missing dependencies (run with the Isaac Lab python, e.g. after
+# `conda activate <isaaclab-env>`, or via `<IsaacLab>/isaaclab.sh -p -m pip ...`):
+#   rsl_rl  : python -m pip install rsl-rl-lib==5.0.1 onnxscript>=0.5
+#             (PyPI name is "rsl-rl-lib"; import name is "rsl_rl"; Isaac Lab 2.2 pins 5.0.1)
+#   assets  : cd <booster_assets> && python -m pip install -e .
+#   package : python -m pip install -e source/booster_train
+#   IsaacLab: see https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -22,6 +22,40 @@ This repository follows the standard Isaac Lab project structure, and is tested 
 
 Run `python scripts/list_envs.py` to list the registered tasks.
 
+## Requirements
+
+| Component | Version / notes |
+|---|---|
+| OS | Linux (Ubuntu 22.04 recommended) |
+| GPU | NVIDIA GPU with CUDA — **required** by Isaac Sim (no CPU-only mode) |
+| Python | >= 3.10 |
+| Isaac Sim | 5.0 |
+| Isaac Lab | 2.2 |
+| rsl_rl | >= 5.0 |
+| PyTorch | provided by the Isaac Lab environment (CUDA build) |
+
+### Required repositories
+
+Clone these **outside** the `IsaacLab` directory (except Isaac Lab itself):
+
+| Repository | Provides | Required? |
+|---|---|---|
+| [IsaacLab](https://github.com/isaac-sim/IsaacLab) | Simulation + RL framework (`isaaclab`, `isaaclab_tasks`, Isaac Sim) | Yes |
+| [booster_train](https://github.com/BoosterRobotics/booster_train) (this repo) | Tasks, configs, and training/play scripts | Yes |
+| [booster_assets](https://github.com/BoosterRobotics/booster_assets) | Robot models (URDFs) + motion data; provides `BOOSTER_ASSETS_DIR` | Yes |
+| [rsl_rl](https://github.com/leggedrobotics/rsl_rl) | PPO trainer (installed into the Isaac Lab env) | Yes |
+| [booster_deploy](https://github.com/BoosterRobotics/booster_deploy) | Run exported policies in MuJoCo / on real robots | Optional (deploy only) |
+
+After installing, verify the environment is complete:
+
+```bash
+./check_env.sh                 # auto-detects the Isaac Lab python
+# or, from the Isaac Lab python directly:
+python scripts/check_env.py
+```
+
+It checks the Python version, the Isaac/rsl_rl/torch stack (incl. CUDA), the `booster_train` install, and that the `booster_assets` URDFs the tasks load are present.
+
 ## Installation
 
 - Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).

@@ -62,9 +62,16 @@ def check_torch() -> None:
     if importlib.util.find_spec("torch") is None:
         record(FAIL, "torch", "not found")
         return
-    import torch  # safe, light
-
-    cuda = torch.cuda.is_available()
+    try:
+        import torch
+    except Exception as e:  # noqa: BLE001  (broken install, not just absent)
+        record(FAIL, "torch", f"installed but FAILS to import: {type(e).__name__}: {e}")
+        return
+    try:
+        cuda = torch.cuda.is_available()
+    except Exception as e:  # noqa: BLE001
+        record(WARN, "torch", f"v{getattr(torch, '__version__', '?')} (CUDA query failed: {e})")
+        return
     detail = f"v{torch.__version__}, CUDA {'available' if cuda else 'NOT available'}"
     if cuda:
         detail += f" ({torch.cuda.get_device_name(0)})"
@@ -73,9 +80,13 @@ def check_torch() -> None:
         record(WARN, "  └─ GPU", "training/sim needs CUDA; CPU-only will not work for Isaac Sim")
 
 
+RSL_RL_INSTALL = "pip install rsl-rl-lib==5.0.1 onnxscript>=0.5"
+
+
 def check_rsl_rl() -> None:
+    # PyPI name is "rsl-rl-lib" (import name "rsl_rl"); Isaac Lab 2.2 pins 5.0.1.
     if importlib.util.find_spec("rsl_rl") is None:
-        record(FAIL, "rsl_rl >= 5.0", "not found")
+        record(FAIL, "rsl_rl >= 5.0", f"not found → {RSL_RL_INSTALL}")
         return
     ver = _version("rsl-rl-lib", "rsl_rl", "rsl-rl")
     if ver is None:
@@ -86,7 +97,8 @@ def check_rsl_rl() -> None:
         status = OK if major >= 5 else FAIL
     except ValueError:
         status = WARN
-    record(status, "rsl_rl >= 5.0", f"v{ver}")
+    detail = f"v{ver}" + (f" → need >=5.0: {RSL_RL_INSTALL}" if status == FAIL else "")
+    record(status, "rsl_rl >= 5.0", detail)
 
 
 def check_booster_assets() -> None:
@@ -121,27 +133,35 @@ def check_booster_train_editable() -> None:
     record(OK, "booster_train", loc)
 
 
+def safe(label: str, fn) -> None:
+    """Run a check; if it raises, record a FAIL instead of crashing the whole run."""
+    try:
+        fn()
+    except Exception as e:  # noqa: BLE001
+        record(FAIL, label, f"checker errored: {type(e).__name__}: {e}")
+
+
 def main() -> int:
     print("\n=== booster_train environment check ===\n")
     print("Python / core:")
-    check_python()
-    check_importable("numpy", "numpy", required=True, version_dists=("numpy",))
-    check_torch()
-    check_importable("gymnasium", "gymnasium", required=True, version_dists=("gymnasium",))
-    check_rsl_rl()
+    safe("Python", check_python)
+    safe("numpy", lambda: check_importable("numpy", "numpy", required=True, version_dists=("numpy",)))
+    safe("torch", check_torch)
+    safe("gymnasium", lambda: check_importable("gymnasium", "gymnasium", required=True, version_dists=("gymnasium",)))
+    safe("rsl_rl >= 5.0", check_rsl_rl)
 
     print("\nIsaac stack (probed, not launched):")
-    check_importable("isaacsim", "isaacsim", required=True)
-    check_importable("isaaclab", "isaaclab", required=True)
-    check_importable("isaaclab_tasks", "isaaclab_tasks", required=True)
+    safe("isaacsim", lambda: check_importable("isaacsim", "isaacsim", required=True))
+    safe("isaaclab", lambda: check_importable("isaaclab", "isaaclab", required=True))
+    safe("isaaclab_tasks", lambda: check_importable("isaaclab_tasks", "isaaclab_tasks", required=True))
 
     print("\nProject package + data:")
-    check_booster_train_editable()
-    check_booster_assets()
+    safe("booster_train", check_booster_train_editable)
+    safe("booster_assets", check_booster_assets)
 
     print("\nBuild/runtime extras:")
-    check_importable("psutil", "psutil", required=False, version_dists=("psutil",))
-    check_importable("toml", "toml", required=False, version_dists=("toml",))
+    safe("psutil", lambda: check_importable("psutil", "psutil", required=False, version_dists=("psutil",)))
+    safe("toml", lambda: check_importable("toml", "toml", required=False, version_dists=("toml",)))
 
     n_fail = sum(1 for s, _, _ in results if s == FAIL)
     n_warn = sum(1 for s, _, _ in results if s == WARN)
