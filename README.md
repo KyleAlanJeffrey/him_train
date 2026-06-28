@@ -85,6 +85,47 @@ Two helper scripts (both auto-detect the Isaac Lab python — active env, else `
 
 ## Usage
 
+### Quick commands
+
+Copy-paste ready (replace `cuda:0` and checkpoint paths as needed). If Isaac Lab
+is **not** on your active conda/venv, swap `python` for `<IsaacLab>/isaaclab.sh -p`.
+
+**Train**
+
+```bash
+# T1 crawl
+python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0
+
+# K1 motion tracking
+python scripts/rsl_rl/train.py --task=Booster-K1-Fight_001-v0 --headless --device cuda:0
+```
+
+**Play + export policy** (writes TorchScript/ONNX to `logs/rsl_rl/<experiment>/<run>/exported/`)
+
+```bash
+# Latest run is auto-resolved if you omit --checkpoint
+python scripts/rsl_rl/play.py --task=T1-crawl-v0 --num_envs=1
+
+# Or point at a specific checkpoint
+python scripts/rsl_rl/play.py --task=T1-crawl-v0 --checkpoint=logs/rsl_rl/t1_crawl/<RUN>/model_<N>.pt
+```
+
+**Pose editor** (interactive T1 crawl-pose tool — tweak joints, then `P` prints JSON to paste into the env cfg)
+
+```bash
+python scripts/experiments/pose_viewer_t1.py
+python scripts/experiments/pose_viewer_t1.py --pose assets/t1-crawl-pose.json
+```
+
+**Replay a motion NPZ in sim** (direct file path, or pull from a wandb registry)
+
+```bash
+python scripts/replay_npz.py --motion <PATH_TO_BOOSTER_ASSETS>/motions/K1/<MOTION>.npz
+python scripts/replay_npz.py --registry_name <WANDB_REGISTRY_NAME>
+```
+
+---
+
 - Listing the available tasks:
 
     ```bash
