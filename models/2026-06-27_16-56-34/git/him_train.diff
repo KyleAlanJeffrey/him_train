@@ -1,0 +1,340 @@
+--- git commit ---
+e366484474a6a678ac9acef8e32a7913f30e1da1
+
+
+--- git status ---
+On branch t1-crawl-task
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   assets/t1-crawl-pose.json
+	new file:   scripts/experiments/check_spawn_t1.py
+	modified:   scripts/experiments/pose_viewer_t1.py
+	modified:   source/booster_train/booster_train/tasks/manager_based/t1_crawl/constants.py
+	modified:   source/booster_train/booster_train/tasks/manager_based/t1_crawl/t1_crawl_env_cfg.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   source/booster_train/booster_train/tasks/manager_based/t1_crawl/constants.py
+	modified:   source/booster_train/booster_train/tasks/manager_based/t1_crawl/t1_crawl_env_cfg.py
+ 
+
+
+--- git diff ---
+diff --git a/assets/t1-crawl-pose.json b/assets/t1-crawl-pose.json
+index 5435bb5..ee043de 100644
+--- a/assets/t1-crawl-pose.json
++++ b/assets/t1-crawl-pose.json
+@@ -4,37 +4,37 @@
+       "base_pos": [
+         0.0,
+         0.0,
+-        0.2314
++        0.1999
+       ],
+       "base_rpy": [
+-        0.05,
+-        -1.7707963,
++        0.0,
++        -1.5708,
+         0.0
+       ],
+       "joints": {
+         "AAHead_yaw": 0.0,
+-        "Left_Shoulder_Pitch": -1.53,
+-        "Right_Shoulder_Pitch": -1.53,
++        "Left_Shoulder_Pitch": -0.86,
++        "Right_Shoulder_Pitch": -0.86,
+         "Waist": 0.0,
+         "Head_pitch": -0.3,
+-        "Left_Shoulder_Roll": -0.08,
+-        "Right_Shoulder_Roll": 0.08,
+-        "Left_Hip_Pitch": 0.0,
+-        "Right_Hip_Pitch": 0.0,
+-        "Left_Elbow_Pitch": 1.56,
+-        "Right_Elbow_Pitch": -1.56,
+-        "Left_Hip_Roll": 1.0,
+-        "Right_Hip_Roll": -1.0,
+-        "Left_Elbow_Yaw": 1.66,
+-        "Right_Elbow_Yaw": 1.66,
+-        "Left_Hip_Yaw": 0.0,
+-        "Right_Hip_Yaw": 0.0,
+-        "Left_Knee_Pitch": 1.46,
+-        "Right_Knee_Pitch": 1.46,
+-        "Left_Ankle_Pitch": 0.13,
+-        "Right_Ankle_Pitch": 0.13,
+-        "Left_Ankle_Roll": -0.0,
+-        "Right_Ankle_Roll": 0.0
++        "Left_Shoulder_Roll": 0.05,
++        "Right_Shoulder_Roll": -0.05,
++        "Left_Hip_Pitch": -0.62,
++        "Right_Hip_Pitch": -0.62,
++        "Left_Elbow_Pitch": 0.86,
++        "Right_Elbow_Pitch": 0.86,
++        "Left_Hip_Roll": 0.85,
++        "Right_Hip_Roll": -0.85,
++        "Left_Elbow_Yaw": 1.59,
++        "Right_Elbow_Yaw": -1.59,
++        "Left_Hip_Yaw": -0.54,
++        "Right_Hip_Yaw": 0.54,
++        "Left_Knee_Pitch": 1.92,
++        "Right_Knee_Pitch": 1.92,
++        "Left_Ankle_Pitch": 0.17,
++        "Right_Ankle_Pitch": 0.17,
++        "Left_Ankle_Roll": -0.11,
++        "Right_Ankle_Roll": 0.11
+       }
+     }
+   ]
+diff --git a/scripts/experiments/check_spawn_t1.py b/scripts/experiments/check_spawn_t1.py
+new file mode 100644
+index 0000000..76b4d8a
+--- /dev/null
++++ b/scripts/experiments/check_spawn_t1.py
+@@ -0,0 +1,110 @@
++"""Check whether the T1 crawl robot spawns penetrating the ground.
++
++Builds the real T1-crawl-v0 env (using whatever CRAWL_FACING / pose is configured
++in constants.py), resets, and reports the lowest collision-surface point of each
++contact link and the lowest link origin overall. A near-instant `flipped`
++termination with a violent spin almost always means a contact body spawns below
++z=0 and the solver ejects the robot.
++
++Usage (him_train repo root, Isaac Lab env active):
++    python scripts/experiments/check_spawn_t1.py
++    python scripts/experiments/check_spawn_t1.py --num_envs 256
++"""
++
++import argparse
++
++from isaaclab.app import AppLauncher
++
++parser = argparse.ArgumentParser(description="T1 crawl spawn-penetration check.")
++parser.add_argument("--num_envs", type=int, default=64, help="Number of envs to sample.")
++parser.add_argument("--task", type=str, default="T1-crawl-v0", help="Registered task name.")
++AppLauncher.add_app_launcher_args(parser)
++args_cli = parser.parse_args()
++args_cli.headless = True
++
++app_launcher = AppLauncher(args_cli)
++simulation_app = app_launcher.app
++
++import gymnasium as gym
++import torch
++
++from isaaclab.utils.math import quat_apply
++
++import booster_train.tasks  # noqa: F401  (registers T1-crawl-v0)
++from booster_train.tasks.manager_based.t1_crawl.t1_crawl_env_cfg import T1CrawlEnvCfg
++
++# Contact-link collision boxes (center, half-extents) in the link frame, from the
++# T1 URDF <collision> tags. Same approximation used by pose_viewer_t1.py.
++CONTACT_BOXES = {
++    # Hands: the ball end-effector sphere (r=0.035 at y=±0.2115), not the forearm cylinder.
++    "left_hand_link": ((0.0, 0.2115, 0.0), (0.035, 0.035, 0.035)),
++    "right_hand_link": ((0.0, -0.2115, 0.0), (0.035, 0.035, 0.035)),
++    "left_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
++    "right_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
++}
++
++
++def box_corners(center, half, device):
++    c = torch.tensor(center, dtype=torch.float32, device=device)
++    h = torch.tensor(half, dtype=torch.float32, device=device)
++    signs = torch.tensor(
++        [[sx, sy, sz] for sx in (1.0, -1.0) for sy in (1.0, -1.0) for sz in (1.0, -1.0)],
++        dtype=torch.float32,
++        device=device,
++    )
++    return c + signs * h  # (8, 3)
++
++
++def main():
++    env_cfg = T1CrawlEnvCfg()
++    env_cfg.scene.num_envs = args_cli.num_envs
++    if args_cli.device is not None:
++        env_cfg.sim.device = args_cli.device
++    env = gym.make(args_cli.task, cfg=env_cfg)
++    env.reset()
++
++    robot = env.unwrapped.scene["robot"]
++    device = robot.device
++    body_names = [str(n) for n in robot.data.body_names]
++    origin_z = env.unwrapped.scene.env_origins[:, 2]  # (N,)
++
++    body_pos = robot.data.body_pos_w   # (N, B, 3)
++    body_quat = robot.data.body_quat_w  # (N, B, 4)
++
++    print(f"\n=== Spawn check: {args_cli.task}, {robot.num_instances} envs ===")
++    print("(clearance = lowest collision surface above ground; negative = PENETRATING)\n")
++
++    worst = {}
++    for name, (center, half) in CONTACT_BOXES.items():
++        if name not in body_names:
++            continue
++        bi = body_names.index(name)
++        corners = box_corners(center, half, device)                 # (8,3)
++        q = body_quat[:, bi, :].unsqueeze(1).expand(-1, 8, 4)        # (N,8,4)
++        world = quat_apply(q, corners.unsqueeze(0).expand(robot.num_instances, 8, 3))
++        world = world + body_pos[:, bi, :].unsqueeze(1)              # (N,8,3)
++        clearance = world[:, :, 2].min(dim=1).values - origin_z      # (N,)
++        worst[name] = (clearance.min().item(), clearance.mean().item())
++
++    for name, (mn, mean) in worst.items():
++        flag = "  << PENETRATING" if mn < 0 else ""
++        print(f"  {name:18s}: min clearance={mn:+.4f}  mean={mean:+.4f}{flag}")
++
++    # Coarse all-body check on link origins (catches a non-contact link spawning low).
++    all_clear = (body_pos[:, :, 2] - origin_z.unsqueeze(1))          # (N,B)
++    lowest_val, lowest_idx = all_clear.min(dim=1)
++    gi = lowest_val.argmin().item()
++    print(
++        f"\n  lowest link ORIGIN over all bodies: {body_names[lowest_idx[gi].item()]} "
++        f"at clearance {lowest_val[gi].item():+.4f} (origin, not surface)"
++    )
++    overall = min(mn for mn, _ in worst.values())
++    verdict = "PENETRATING — raise the facing height" if overall < 0 else "clear of the ground"
++    print(f"\n  VERDICT: lowest contact surface = {overall:+.4f}  ->  {verdict}\n")
++
++    env.close()
++
++
++if __name__ == "__main__":
++    main()
++    simulation_app.close()
+diff --git a/scripts/experiments/pose_viewer_t1.py b/scripts/experiments/pose_viewer_t1.py
+index e6636aa..68e1e5b 100644
+--- a/scripts/experiments/pose_viewer_t1.py
++++ b/scripts/experiments/pose_viewer_t1.py
+@@ -138,9 +138,11 @@ def main():
+     # true lowest point. Hand cylinders are over-approximated by their bbox, which
+     # is conservative (errs toward "touching").
+     CONTACT_BOXES = {
+-        # link: (center_xyz, half_extents_xyz) in the link frame
+-        "left_hand_link": ((0.0, 0.12, 0.0), (0.029, 0.065, 0.029)),
+-        "right_hand_link": ((0.0, -0.12, 0.0), (0.029, 0.065, 0.029)),
++        # link: (center_xyz, half_extents_xyz) in the link frame.
++        # Hands: the ball end-effector sphere (r=0.035 at y=±0.2115), NOT the forearm
++        # cylinder — the ball is the actual crawl contact point.
++        "left_hand_link": ((0.0, 0.2115, 0.0), (0.035, 0.035, 0.035)),
++        "right_hand_link": ((0.0, -0.2115, 0.0), (0.035, 0.035, 0.035)),
+         "left_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
+         "right_foot_link": ((0.0101079, 0.0, -0.0214208), (0.112434, 0.05, 0.021830)),
+     }
+diff --git a/source/booster_train/booster_train/tasks/manager_based/t1_crawl/constants.py b/source/booster_train/booster_train/tasks/manager_based/t1_crawl/constants.py
+index 3bb188b..d5bb485 100644
+--- a/source/booster_train/booster_train/tasks/manager_based/t1_crawl/constants.py
++++ b/source/booster_train/booster_train/tasks/manager_based/t1_crawl/constants.py
+@@ -48,32 +48,32 @@ _FACE_DOWN_JOINTS = {
+ }
+ 
+ # --- Chest-up crawl pose (belly-up, limbs reaching back to ground) ---
+-_CHEST_UP_HEIGHT = 0.2314
+-_CHEST_UP_ROT = (0.6328, 0.0158, -0.7739, 0.0194)    # rpy ≈ [0.05, -1.7708, 0.0]
++_CHEST_UP_HEIGHT = 0.1999
++_CHEST_UP_ROT = (0.7071, 0.0, -0.7071, 0.0)    # rpy ≈ [0.0, -1.5708, 0.0]
+ _CHEST_UP_JOINTS = {
+     "AAHead_yaw": 0.000,
+-    "Left_Shoulder_Pitch": -1.530,
+-    "Right_Shoulder_Pitch": -1.530,
++    "Left_Shoulder_Pitch": -0.860,
++    "Right_Shoulder_Pitch": -0.860,
+     "Waist": 0.000,
+     "Head_pitch": -0.300,
+-    "Left_Shoulder_Roll": -0.080,
+-    "Right_Shoulder_Roll": 0.080,
+-    "Left_Hip_Pitch": 0.000,
+-    "Right_Hip_Pitch": 0.000,
+-    "Left_Elbow_Pitch": 1.560,
+-    "Right_Elbow_Pitch": -1.560,
+-    "Left_Hip_Roll": 1.000,
+-    "Right_Hip_Roll": -1.000,
+-    "Left_Elbow_Yaw": 1.660,
+-    "Right_Elbow_Yaw": 1.660,
+-    "Left_Hip_Yaw": 0.000,
+-    "Right_Hip_Yaw": 0.000,
+-    "Left_Knee_Pitch": 1.460,
+-    "Right_Knee_Pitch": 1.460,
+-    "Left_Ankle_Pitch": 0.130,
+-    "Right_Ankle_Pitch": 0.130,
+-    "Left_Ankle_Roll": -0.000,
+-    "Right_Ankle_Roll": 0.000,
++    "Left_Shoulder_Roll": 0.050,
++    "Right_Shoulder_Roll": -0.050,
++    "Left_Hip_Pitch": -0.620,
++    "Right_Hip_Pitch": -0.620,
++    "Left_Elbow_Pitch": 0.860,
++    "Right_Elbow_Pitch": 0.860,
++    "Left_Hip_Roll": 0.850,
++    "Right_Hip_Roll": -0.850,
++    "Left_Elbow_Yaw": 1.590,
++    "Right_Elbow_Yaw": -1.590,
++    "Left_Hip_Yaw": -0.540,
++    "Right_Hip_Yaw": 0.540,
++    "Left_Knee_Pitch": 1.920,
++    "Right_Knee_Pitch": 1.920,
++    "Left_Ankle_Pitch": 0.170,
++    "Right_Ankle_Pitch": 0.170,
++    "Left_Ankle_Roll": -0.110,
++    "Right_Ankle_Roll": 0.110,
+ }
+ 
+ # Per-facing presets: init height (m) + rotation (w,x,y,z) + body-frame gravity
+@@ -97,13 +97,15 @@ FACING = FACING_PRESETS[CRAWL_FACING]
+ # =============================================================================
+ # Reward weights
+ # =============================================================================
+-W_TRACK_LIN_VEL = 2.0          # track commanded linear velocity (body YZ)
+-W_TRACK_ANG_VEL = 2.0          # track commanded angular velocity (world yaw)
++W_TRACK_LIN_VEL = 4.0          # track commanded linear velocity (body YZ) — raised so moving beats standing
++W_TRACK_ANG_VEL = 3.0          # track commanded angular velocity (world yaw)
+ W_CRAWL_ORIENT = 0.2           # keep gravity aligned with the facing's body axis
++W_ALIVE = 1.0                  # per-step bonus for not terminating (counters give-up flipping)
++W_FLIPPED_PENALTY = -2000.0     # one-time penalty when the flipped termination fires
+ W_BASE_HEIGHT = -0.1           # penalize Trunk height deviation from target
+ W_JOINT_DEVIATION = -0.01      # penalize joint drift from default pose
+ W_DOF_POS_LIMITS = -5.0        # penalize hitting joint position limits
+-W_TORQUE_LIMITS = -5.0         # penalize hitting torque limits (off)
++W_TORQUE_LIMITS = -0.001        # gentle torque-saturation regularizer (was -5.0: dominated reward)
+ W_ACTION_RATE = -0.01          # penalize fast action changes
+ W_DOF_TORQUES = -1e-4          # penalize large torques
+ W_UNDESIRED_CONTACT = -5.0     # penalize non-foot/hand ground contact
+@@ -116,7 +118,7 @@ W_BOTH_RIGHT_AIR = -0.1        # penalize right foot+hand both off the ground
+ # =============================================================================
+ # Reward params
+ # =============================================================================
+-STD_TRACK_LIN_VEL = 0.25       # exp-kernel width for linear-velocity tracking
+-STD_TRACK_ANG_VEL = 0.25       # exp-kernel width for angular-velocity tracking
++STD_TRACK_LIN_VEL = 0.5        # exp-kernel width — wider so partial progress toward the target is rewarded
++STD_TRACK_ANG_VEL = 0.5        # exp-kernel width for angular-velocity tracking
+ TARGET_BASE_HEIGHT = 0.28      # desired Trunk height (m) when crawling
+ UNDESIRED_CONTACT_THRESHOLD = 1.0  # contact force (N) above which contact is "undesired"
+diff --git a/source/booster_train/booster_train/tasks/manager_based/t1_crawl/t1_crawl_env_cfg.py b/source/booster_train/booster_train/tasks/manager_based/t1_crawl/t1_crawl_env_cfg.py
+index 45bc87a..09b6783 100644
+--- a/source/booster_train/booster_train/tasks/manager_based/t1_crawl/t1_crawl_env_cfg.py
++++ b/source/booster_train/booster_train/tasks/manager_based/t1_crawl/t1_crawl_env_cfg.py
+@@ -85,7 +85,7 @@ class CommandsCfg:
+         rel_standing_envs=0.05,
+         debug_vis=True,
+         ranges=mdp.CrawlVelocityCommandCfg.Ranges(
+-            lin_vel_z=(-1.0, 2.5),  # forward (body Z = world +X when crawling)
++            lin_vel_z=(0.0, 0.8),  # forward (body Z = world +X when crawling) — reachable range to learn to move
+             lin_vel_y=(0.0, 0.0),  # lateral (body Y)
+             ang_vel_x=(-1.0, 1.0),  # roll about body X (= world yaw when crawling)
+         ),
+@@ -273,6 +273,15 @@ class RewardsCfg:
+         params={"target": c.FACING["gravity_target"]},
+     )
+ 
++    # --- survival: reward staying alive, heavily penalize the flip termination so
++    # the policy can't "give up" by flipping to escape ongoing penalties. ---
++    alive = RewTerm(func=mdp.is_alive, weight=c.W_ALIVE)
++    flipped_penalty = RewTerm(
++        func=mdp.is_terminated_term,
++        weight=c.W_FLIPPED_PENALTY,
++        params={"term_keys": "flipped"},
++    )
++
+     # --- base height (Trunk ~0.28m when crawling) ---
+     base_height_l2 = RewTerm(
+         func=mdp.base_height_l2,
