@@ -85,57 +85,46 @@ Two helper scripts (both auto-detect the Isaac Lab python — active env, else `
 
 ## Usage
 
-### Quick commands
+### Training
 
-Copy-paste ready (replace `cuda:0` and checkpoint paths as needed). If Isaac Lab
-is **not** on your active conda/venv, swap `python` for `<IsaacLab>/isaaclab.sh -p`.
+Run `scripts/rsl_rl/train.py`. If Isaac Lab is **not** on your active conda/venv,
+swap `python` for `<IsaacLab>/isaaclab.sh -p`.
 
-**Train**
+Parameters (mix and match as needed):
 
-```bash
-# T1 crawl
-python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0
+| Flag | Description |
+|---|---|
+| `--task` | Task id — `T1-crawl-v0`, `Booster-K1-Fight_001-v0`, etc. (required). |
+| `--headless` | Run without a local window (servers / Brev). |
+| `--device` | Compute device, e.g. `cuda:0`. |
+| `--num_envs` | Override the number of parallel envs. |
+| `--max_iterations` | Training iterations — when resuming, this many *additional*. |
+| `--resume` | Resume from a checkpoint (defaults to the latest run + latest checkpoint). |
+| `--load_run` | Run folder to resume from, under `logs/rsl_rl/<experiment>/` (e.g. `2026-06-30_17-33-24`). |
+| `--checkpoint` | Checkpoint file within that run (e.g. `model_999.pt`). |
+| `--video` | Record periodic clips of env 0 → `logs/rsl_rl/<experiment>/<run>/videos/train/`. |
+| `--video_length` | Clip length in **env steps** (~0.02 s each, so 300 ≈ 6 s). |
+| `--video_interval` | Steps between clips, in **env steps** = `iterations × num_steps_per_env(24)` (100 iters → `2400`). |
+| `--livestream 2` | Stream over WebRTC instead of a window (see below). |
 
-# K1 motion tracking
-python scripts/rsl_rl/train.py --task=Booster-K1-Fight_001-v0 --headless --device cuda:0
-```
-
-**Continue / resume training** (`--resume`; defaults to the latest run + latest checkpoint)
-
-```bash
-# resume from the most recent run and checkpoint
-python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0 --resume
-
-# resume from a specific run folder and/or checkpoint file
-#   --load_run   = run folder name under logs/rsl_rl/<experiment>/  (e.g. 2026-06-28_18-06-31)
-#   --checkpoint = checkpoint file name within that run             (e.g. model_1500.pt)
-python scripts/rsl_rl/train.py --task=T1-crawl-v0 --headless --device cuda:0 \
-    --resume --load_run=2026-06-28_18-06-31 --checkpoint=model_1500.pt
-```
-
-**Play + export policy** (writes TorchScript/ONNX to `logs/rsl_rl/<experiment>/<run>/exported/`)
+Example — resume a run for 10k more iterations and record a ~6 s clip every ~100 iterations:
 
 ```bash
-# Latest run is auto-resolved if you omit --checkpoint
-python scripts/rsl_rl/play.py --task=T1-crawl-v0 --num_envs=1
-
-# Or point at a specific checkpoint
-python scripts/rsl_rl/play.py --task=T1-crawl-v0 --checkpoint=logs/rsl_rl/t1_crawl/<RUN>/model_<N>.pt
+python scripts/rsl_rl/train.py \
+    --task=T1-crawl-v0 \
+    --headless \
+    --resume \
+    --load_run=2026-06-30_17-33-24 \
+    --checkpoint=model_999.pt \
+    --max_iterations 10000 \
+    --video \
+    --video_length 300 \
+    --video_interval 2400
 ```
 
-**Pose editor** (interactive T1 crawl-pose tool — tweak joints, then `P` prints JSON to paste into the env cfg)
-
-```bash
-python scripts/experiments/pose_viewer_t1.py
-python scripts/experiments/pose_viewer_t1.py --pose assets/t1-crawl-pose.json
-```
-
-**Replay a motion NPZ in sim** (direct file path, or pull from a wandb registry)
-
-```bash
-python scripts/replay_npz.py --motion <PATH_TO_BOOSTER_ASSETS>/motions/K1/<MOTION>.npz
-python scripts/replay_npz.py --registry_name <WANDB_REGISTRY_NAME>
-```
+Other scripts: `scripts/rsl_rl/play.py` (play a checkpoint and export TorchScript/ONNX
+to `.../exported/`), `scripts/experiments/pose_viewer_t1.py` (interactive crawl-pose
+editor), and `scripts/replay_npz.py` (replay a motion NPZ) — see `--help` on each.
 
 ### Viewing the simulation (WebRTC stream)
 

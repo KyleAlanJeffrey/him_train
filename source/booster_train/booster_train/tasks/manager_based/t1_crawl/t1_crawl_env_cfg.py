@@ -81,13 +81,13 @@ class CommandsCfg:
 
     base_velocity = mdp.CrawlVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(4.0, 8.0),
-        rel_standing_envs=0.05,
+        resampling_time_range=c.CMD_RESAMPLING_TIME,
+        rel_standing_envs=c.CMD_REL_STANDING_ENVS,
         debug_vis=True,
         ranges=mdp.CrawlVelocityCommandCfg.Ranges(
-            lin_vel_z=(0.0, 0.8),  # forward (body Z = world +X when crawling) — reachable range to learn to move
-            lin_vel_y=(0.0, 0.0),  # lateral (body Y)
-            ang_vel_x=(-1.0, 1.0),  # roll about body X (= world yaw when crawling)
+            lin_vel_z=c.CMD_LIN_VEL_Z,  # forward (body Z = world +X when crawling)
+            lin_vel_y=c.CMD_LIN_VEL_Y,  # lateral (body Y)
+            ang_vel_x=c.CMD_ANG_VEL_X,  # roll about body X (= world yaw when crawling)
         ),
     )
 
@@ -273,14 +273,10 @@ class RewardsCfg:
         params={"target": c.FACING["gravity_target"]},
     )
 
-    # --- survival: reward staying alive, heavily penalize the flip termination so
-    # the policy can't "give up" by flipping to escape ongoing penalties. ---
+    # --- survival: small constant alive bonus (keeps per-step reward net-positive).
+    # No flip penalty term — the flip termination it referenced was removed; flipping
+    # is now discouraged continuously by crawl_orientation instead of a one-time hit. ---
     alive = RewTerm(func=mdp.is_alive, weight=c.W_ALIVE)
-    flipped_penalty = RewTerm(
-        func=mdp.is_terminated_term,
-        weight=c.W_FLIPPED_PENALTY,
-        params={"term_keys": "flipped"},
-    )
 
     # --- base height (Trunk ~0.28m when crawling) ---
     base_height_l2 = RewTerm(
@@ -406,12 +402,24 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    # Reset if the robot flips away from its crawl facing (tipped past 90°, i.e.
-    # gravity no longer points along the facing's body axis). Facing-aware via
-    # the same gravity_target used by the orientation reward.
-    flipped = DoneTerm(
-        func=mdp.crawl_flipped,
-        params={"target": c.FACING["gravity_target"], "min_alignment": 0.0},
+    # NOTE: no `flipped` termination. A reset-on-flip is an *escape hatch* — the
+    # policy learns to flip on purpose to end an episode that's accruing net
+    # reward less than the flip alternative, and no one-time penalty can out-scale
+    # escaping a persistent per-step cost. Instead, flipping is discouraged
+    # *continuously* by the crawl_orientation reward (and the joint-limit penalty
+    # the flipped pose incurs), with no way to bail out. See mdp.crawl_flipped
+    # (kept for reference / optional re-enable).
+
+
+@configclass
+class CurriculumCfg:
+    """Logged metrics (no actual curriculum). Surfaced under Curriculum/ in logs."""
+
+    # Fraction of envs currently flipped — watch the flip rate without a flip
+    # termination. Facing-aware via the same gravity_target as the orientation reward.
+    flipped = CurrTerm(
+        func=mdp.fraction_flipped,
+        params={"target": c.FACING["gravity_target"]},
     )
 
 
@@ -426,6 +434,7 @@ class T1CrawlEnvCfg(ManagerBasedRLEnvCfg):
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self) -> None:
         self.decimation = 4

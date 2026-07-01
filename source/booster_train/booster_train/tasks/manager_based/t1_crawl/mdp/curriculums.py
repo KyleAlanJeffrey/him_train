@@ -18,6 +18,26 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def fraction_flipped(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    target: tuple[float, float, float] = (-1.0, 0.0, 0.0),
+) -> torch.Tensor:
+    """Logged metric (NOT a real curriculum): fraction of envs currently flipped.
+
+    "Flipped" = projected gravity misaligned with the facing target by >90°
+    (dot(projected_gravity_b, target) < 0). Computed over ALL envs (ignores
+    env_ids) and returned unchanged, so it modifies nothing — it just surfaces as
+    ``Curriculum/flipped`` in the logs so you can watch the flip rate even though
+    there is no flip *termination*. Pass the facing's gravity_target.
+    """
+    asset: Articulation = env.scene["robot"]
+    g_b = asset.data.projected_gravity_b
+    target_t = torch.tensor(target, dtype=g_b.dtype, device=g_b.device)
+    alignment = torch.sum(g_b * target_t, dim=1)
+    return (alignment < 0.0).float().mean()
+
+
 def terrain_levels_vel_crawl(
     env: ManagerBasedRLEnv,
     env_ids: Sequence[int],
