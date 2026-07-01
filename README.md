@@ -126,6 +126,34 @@ Other scripts: `scripts/rsl_rl/play.py` (play a checkpoint and export TorchScrip
 to `.../exported/`), `scripts/experiments/pose_viewer_t1.py` (interactive crawl-pose
 editor), and `scripts/replay_npz.py` (replay a motion NPZ) — see `--help` on each.
 
+### Drive the robot with the keyboard (T1 crawl)
+
+Play a trained crawl policy and **steer it yourself** — keys are hold-to-drive
+(hold to move at an absolute speed; release returns that axis to 0):
+
+```bash
+python scripts/rsl_rl/play_teleop.py \
+    --task=T1-crawl-v0 \
+    --num_envs=1 \
+    --checkpoint=logs/rsl_rl/t1_crawl/<RUN>/model_<N>.pt
+```
+
+| Key | Action |
+|---|---|
+| `W` / `S` | forward / backward |
+| `A` / `D` | turn left / right |
+| `Q` / `E` | strafe left / right (`lin_vel_y` — disabled during training, so minimal effect) |
+| `SPACE` | stop |
+| `ESC` | quit |
+
+Tune command magnitudes: `--turn` (yaw-rate for A/D; default 1.5 — higher = steeper
+turn, but >1.0 is beyond the trained range) and `--strafe` (Q/E lateral speed).
+
+Omit `--checkpoint` to auto-load the latest run. Keyboard focus needs the Kit
+window — it works on a local display but is unreliable over WebRTC/livestream, so
+teleop is best on a machine with a real screen. Crawl-only (the command layout is
+crawl-specific).
+
 ### Viewing the simulation (WebRTC stream)
 
 On the Brev / Isaac Launchable host (VSCode + Kit App Streaming `web-viewer`)
