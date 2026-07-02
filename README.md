@@ -142,7 +142,7 @@ python scripts/rsl_rl/play_teleop.py \
 |---|---|
 | `W` / `S` | forward / backward |
 | `A` / `D` | turn left / right |
-| `Q` / `E` | strafe left / right (`lin_vel_y` — disabled during training, so minimal effect) |
+| `Q` / `E` | strafe left / right (`lin_vel_y` — only effective on policies trained with a nonzero `CMD_LIN_VEL_Y` range) |
 | `SPACE` | stop |
 | `ESC` | quit |
 

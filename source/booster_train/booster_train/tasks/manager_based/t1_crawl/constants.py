@@ -119,8 +119,8 @@ W_BOTH_RIGHT_AIR = -0.1        # penalize right foot+hand both off the ground
 # =============================================================================
 # Reward params
 # =============================================================================
-STD_TRACK_LIN_VEL = 0.5        # exp-kernel width — wider so partial progress toward the target is rewarded
-STD_TRACK_ANG_VEL = 0.5        # exp-kernel width for angular-velocity tracking
+STD_TRACK_LIN_VEL = 0.8        # exp-kernel width — wider so partial progress toward the target is rewarded
+STD_TRACK_ANG_VEL = 0.8        # exp-kernel width for angular-velocity tracking
 TARGET_BASE_HEIGHT = 0.28      # desired Trunk height (m) when crawling
 UNDESIRED_CONTACT_THRESHOLD = 1.0  # contact force (N) above which contact is "undesired"
 
@@ -130,7 +130,7 @@ UNDESIRED_CONTACT_THRESHOLD = 1.0  # contact force (N) above which contact is "u
 # Keep targets reachable: widening these before the robot reliably crawls
 # reintroduces unhittable targets and flattens the tracking-reward gradient.
 CMD_LIN_VEL_Z = (-1.0, 1.5)    # forward speed (body Z = world +X when crawling)
-CMD_LIN_VEL_Y = (0.0, 0.0)     # lateral (body Y) — disabled
+CMD_LIN_VEL_Y = (-0.5, 0.5)    # lateral / strafe (body Y) — modest range; strafing is harder than forward
 CMD_ANG_VEL_X = (-1.0, 1.0)    # turn rate (roll about body X = world yaw)
 CMD_RESAMPLING_TIME = (4.0, 8.0)   # seconds between drawing a new random command
 CMD_REL_STANDING_ENVS = 0.05   # fraction of envs given a zero (stand-still) command
