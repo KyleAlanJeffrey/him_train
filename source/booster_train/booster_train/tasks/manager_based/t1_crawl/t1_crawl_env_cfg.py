@@ -295,6 +295,13 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
+    # --- keep the head static (strong deviation penalty on just the head joints) ---
+    joint_deviation_head = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=c.W_HEAD_STATIC,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["AAHead_yaw", "Head_pitch"])},
+    )
+
     # --- safety limits ---
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,

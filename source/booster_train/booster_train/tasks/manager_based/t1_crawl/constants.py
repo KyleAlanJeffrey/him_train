@@ -105,6 +105,7 @@ W_ALIVE = 1.0                  # small constant alive bonus (keeps per-step rewa
 W_FLIPPED_PENALTY = -2000.0    # UNUSED (flip termination removed) — kept for optional re-enable
 W_BASE_HEIGHT = -0.1           # penalize Trunk height deviation from target
 W_JOINT_DEVIATION = -0.01      # penalize joint drift from default pose
+W_HEAD_STATIC = -1.0           # keep the head joints (AAHead_yaw, Head_pitch) at their default pose
 W_DOF_POS_LIMITS = -5.0        # penalize hitting joint position limits
 W_TORQUE_LIMITS = -0.01        # gentle torque-saturation regularizer (was -5.0: dominated reward)
 W_ACTION_RATE = -0.01          # penalize fast action changes
